@@ -1,0 +1,71 @@
+:root{
+  --bg:#F4F3EF; --card:#FFFFFF; --ink:#16171A; --sub:#5E626A; --line:#ECEAE4;
+  --dark:#16171A; --dark-sub:#B9BCC4; --dark-track:#33353B;
+  --accent:#2F4FD8; --accent-on-dark:#8FA4FF;
+  --tabbar-h:64px;
+  --safe-b:env(safe-area-inset-bottom,0px);
+  --safe-t:env(safe-area-inset-top,0px);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  font-family:'IBM Plex Sans KR',-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+  background:var(--bg); color:var(--ink);
+  -webkit-font-smoothing:antialiased; -webkit-tap-highlight-color:transparent;
+}
+button{font-family:inherit;color:inherit}
+#app{max-width:480px;margin:0 auto;min-height:100%;position:relative}
+#view{padding:calc(var(--safe-t) + 8px) 0 calc(var(--tabbar-h) + var(--safe-b) + 24px)}
+
+/* 상단 월 선택 */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:8px 12px 8px 8px}
+.month{display:flex;align-items:center;gap:2px}
+.month h1{font-size:20px;font-weight:700;letter-spacing:-.3px;margin:0;min-width:120px;text-align:center}
+.icon-btn{width:44px;height:44px;border:0;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:12px}
+.icon-btn:disabled{opacity:.3;cursor:default}
+.icon-btn svg{width:20px;height:20px;fill:none;stroke:var(--ink);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.avatar{width:36px;height:36px;border-radius:18px;background:#E3E1DA;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#3E4148}
+
+/* 합계 카드 */
+.total{margin:4px 20px 0;padding:22px;border-radius:22px;background:var(--dark);color:#fff;display:flex;flex-direction:column;gap:14px}
+.total .label{font-size:13px;color:var(--dark-sub)}
+.total .amount{display:flex;align-items:baseline;gap:6px}
+.total .amount b{font-size:32px;font-weight:700;letter-spacing:-.8px}
+.total .amount span{font-size:16px;color:var(--dark-sub)}
+.track{height:6px;border-radius:3px;background:var(--dark-track);overflow:hidden}
+.track i{display:block;height:100%;border-radius:3px;background:var(--accent-on-dark)}
+.total .meta{display:flex;justify-content:space-between;font-size:13px;color:var(--dark-sub)}
+
+/* 구분별 */
+.section-head{display:flex;align-items:center;justify-content:space-between;padding:20px 20px 10px}
+.section-head h2{font-size:16px;font-weight:700;margin:0}
+.chip{display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:#fff;border:1px solid #E6E4DE;font-size:12px;color:var(--sub)}
+.grid{padding:0 20px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.cat{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:10px;text-decoration:none;color:var(--ink);min-height:132px}
+.cat .name{font-size:14px;font-weight:600}
+.cat .sum{font-size:20px;font-weight:700;letter-spacing:-.4px}
+.cat .sum small{font-size:13px;font-weight:500;color:var(--sub);margin-left:2px}
+.cat .bar{height:5px;border-radius:3px;background:var(--line)}
+.cat .budget{font-size:12px;color:var(--sub);line-height:1.5}
+
+/* 촬영 버튼 */
+.cta-wrap{padding:14px 20px 0}
+.cta{width:100%;height:56px;border:0;border-radius:16px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;gap:8px;font-size:16px;font-weight:600;cursor:pointer}
+.cta svg{width:20px;height:20px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.cta:active{transform:scale(.99)}
+
+/* 준비 중 화면 */
+.page-title{font-size:20px;font-weight:700;margin:0;padding:16px 20px 8px}
+.empty{margin:12px 20px;padding:32px 20px;border-radius:18px;background:#fff;border:1px solid var(--line);text-align:center;color:var(--sub);font-size:14px;line-height:1.6}
+.empty b{display:block;color:var(--ink);font-size:16px;margin-bottom:6px}
+
+/* 하단 메뉴 */
+.tabbar{position:fixed;left:0;right:0;bottom:0;max-width:480px;margin:0 auto;height:calc(var(--tabbar-h) + var(--safe-b));padding:8px 12px var(--safe-b);background:#fff;border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(3,minmax(0,1fr));z-index:10}
+.tabbar a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:11px;color:var(--sub);text-decoration:none}
+.tabbar svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.tabbar a[aria-current="page"]{color:var(--ink);font-weight:600}
+
+/* 알림 */
+#toast{position:fixed;left:50%;bottom:calc(var(--tabbar-h) + var(--safe-b) + 16px);transform:translateX(-50%);background:var(--dark);color:#fff;font-size:13px;padding:10px 14px;border-radius:12px;max-width:calc(100% - 40px);z-index:20}
+
+.version{padding:24px 20px 0;text-align:center;font-size:11px;color:#A3A6AD}
