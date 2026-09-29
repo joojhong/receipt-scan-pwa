@@ -6,13 +6,15 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '0.4.0';
+  var APP_VERSION = '0.5.0';
   var CATEGORIES = ['경비', '접대비', '회의비', '출장비'];
   var CACHE_KEY = 'rs.cache.receipts';
 
   // ── 상태 ──
   var state = {
-    user: RSAuth.user(),   // { email } 또는 null
+    user: RSAuth.user(),   // { email, approved } 또는 null
+    pending: null,         // 승인 대기: { status, message }
+    admin: { list: null, loading: false, error: '', waiting: 0 }, // 관리자 화면
     ws: null,              // 폴더·시트 ID
     receipts: loadCache(), // 시트에서 읽은 영수증 목록
     loading: false,
@@ -83,17 +85,61 @@
     try {
       var u = await RSAuth.login();
       state.user = u;
+      state.pending = null;
       render();
       await refresh();
     } catch (e) {
-      state.error = e.message || '로그인하지 못했습니다';
+      if (e.notApproved) {
+        state.user = { email: e.email, approved: false };
+        state.pending = { status: e.approvalStatus, message: e.message };
+      } else {
+        state.error = e.message || '로그인하지 못했습니다';
+      }
       render();
     }
+  }
+
+  // ── 화면: 승인 대기 ──
+  var PENDING_TEXT = {
+    pending: ['관리자 승인을 기다리고 있습니다', '관리자가 승인하면 아래 [다시 확인]을 눌러 주세요.'],
+    rejected: ['사용이 승인되지 않았습니다', '필요하면 관리자에게 문의해 주세요.'],
+    disabled: ['사용이 중지되었습니다', '필요하면 관리자에게 문의해 주세요.']
+  };
+  function renderPending(root) {
+    var st = (state.pending && state.pending.status) || 'pending';
+    var t = PENDING_TEXT[st] || PENDING_TEXT.pending;
+    root.appendChild(el(
+      '<section class="welcome">' +
+        '<img src="icons/icon-192.png" alt="" width="72" height="72">' +
+        '<h1>' + esc(t[0]) + '</h1>' +
+        '<p>' + esc(state.user.email) + '</p>' +
+        '<p>' + esc(t[1]) + '</p>' +
+        '<button class="google-btn" id="recheckBtn" type="button">다시 확인</button>' +
+        (state.error ? '<p class="err" role="alert">' + esc(state.error) + '</p>' : '') +
+        '<button class="linkish" id="otherBtn" type="button">다른 계정으로 로그인</button>' +
+      '</section>'
+    ));
+    root.querySelector('#recheckBtn').onclick = function (ev) {
+      ev.currentTarget.disabled = true;
+      state.pending = null; state.error = '';
+      refresh();
+    };
+    root.querySelector('#otherBtn').onclick = logout;
+  }
+
+  async function logout() {
+    await RSAuth.logout();
+    state.user = null; state.ws = null; state.receipts = []; state.error = ''; state.pending = null;
+    state.admin = { list: null, loading: false, error: '', waiting: 0 };
+    saveCache([]);
+    location.hash = '#/home';
+    render();
   }
 
   // ── 화면: 홈 ──
   function renderHome(root) {
     if (!state.user) return renderLogin(root);
+    if (state.pending) return renderPending(root);
     var month = ym(view);
     var total = 0, byCat = {}, pending = 0;
     CATEGORIES.forEach(function (c) { byCat[c] = 0; });
@@ -127,6 +173,7 @@
         '</div>' +
         '<button class="avatar" id="avatar" aria-label="계정 메뉴">' + esc(state.user.email.charAt(0).toUpperCase()) + '</button>' +
       '</header>' +
+      (RSAuth.isAdmin() && state.admin.waiting ? '<a class="banner" href="#/admin">승인을 기다리는 사용자가 ' + state.admin.waiting + '명 있습니다 ›</a>' : '') +
       banner +
       '<section class="total" aria-label="이번 달 사용 합계">' +
         '<div class="label">' + (isCurrent(view) ? '이번 달' : view.m + '월') + ' 사용 합계' + (state.loading ? ' · 불러오는 중' : '') + '</div>' +
@@ -162,6 +209,7 @@
         '<div class="sheet-email">' + esc(state.user.email) + '</div>' +
         (ws ? '<a class="sheet-item" href="' + RSStore.sheetUrl(ws) + '" target="_blank" rel="noopener">영수증 장부(시트) 열기</a>' +
               '<a class="sheet-item" href="' + RSStore.folderUrl(ws) + '" target="_blank" rel="noopener">Drive 폴더 열기</a>' : '') +
+        (RSAuth.isAdmin() ? '<a class="sheet-item" href="#/admin" id="adminLink">사용자 승인' + (state.admin.waiting ? ' (' + state.admin.waiting + ')' : '') + '</a>' : '') +
         '<button class="sheet-item" id="reloadBtn" type="button">새로고침</button>' +
         '<button class="sheet-item danger" id="logoutBtn" type="button">로그아웃</button>' +
         '<a class="sheet-item sub" href="privacy.html">개인정보 처리방침</a>' +
@@ -169,13 +217,9 @@
     wrap.onclick = function (e) { if (e.target === wrap) wrap.remove(); };
     document.body.appendChild(wrap);
     wrap.querySelector('#reloadBtn').onclick = function () { wrap.remove(); refresh(); };
-    wrap.querySelector('#logoutBtn').onclick = async function () {
-      wrap.remove();
-      await RSAuth.logout();
-      state.user = null; state.ws = null; state.receipts = []; state.error = '';
-      saveCache([]);
-      render();
-    };
+    var al = wrap.querySelector('#adminLink');
+    if (al) al.onclick = function () { wrap.remove(); };
+    wrap.querySelector('#logoutBtn').onclick = function () { wrap.remove(); logout(); };
   }
 
   // ── 시트에서 다시 읽기 ──
@@ -183,14 +227,20 @@
     if (!state.user || state.loading) return;
     state.loading = true; state.error = ''; render();
     try {
+      // 로그인 확인(승인 여부 포함)을 먼저 하고, 관리자면 승인 목록은 시트와 별개로 불러옴
+      await RSAuth.getToken();
+      state.authChecked = true;
+      if (RSAuth.isAdmin()) loadAdmin(true);
       state.ws = await RSStore.ensureWorkspace(state.user.email, function (msg) { state.step = msg; render(); });
       state.step = '';
       state.receipts = await RSStore.readReceipts(state.ws);
       state.offline = false;
       saveCache(state.receipts);
     } catch (e) {
-      state.step = '';
-      if (e.needLogin) {
+      state.step = ''; state.authChecked = true;
+      if (e.notApproved) {
+        state.pending = { status: e.approvalStatus, message: e.message };
+      } else if (e.needLogin) {
         state.user = null;
         state.error = e.message;
       } else if (!navigator.onLine || e instanceof TypeError) {
@@ -213,7 +263,68 @@
     ));
   }
 
+  // ── 화면: 사용자 승인(관리자) ──
+  var STATUS_LABEL = { pending: '승인 대기', approved: '사용 중', disabled: '사용 중지', rejected: '거절됨' };
+  async function loadAdmin(quiet) {
+    state.admin.loading = true; if (!quiet) render();
+    try {
+      var d = await RSAuth.admin('/v1/admin/users');
+      state.admin.list = d.users || [];
+      state.admin.waiting = state.admin.list.filter(function (u) { return u.status === 'pending'; }).length;
+      state.admin.error = '';
+    } catch (e) {
+      state.admin.error = e.message || '목록을 불러오지 못했습니다';
+    } finally {
+      state.admin.loading = false; render();
+    }
+  }
+  async function setStatus(email, status, label) {
+    if (!confirm(email + '\n' + label + ' 처리할까요?')) return;
+    try {
+      await RSAuth.admin('/v1/admin/users/status', { email: email, status: status });
+      toast(label + ' 처리했습니다');
+    } catch (e) { toast(e.message || '처리하지 못했습니다'); }
+    loadAdmin(true);
+  }
+  function fmtDate(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  }
+  function renderAdmin(root) {
+    if (!RSAuth.isAdmin()) {
+      // 앱을 막 열어 로그인 확인 중이면 잠시 기다림
+      if (!state.authChecked) { root.appendChild(el('<div class="empty"><b>확인 중…</b></div>')); return; }
+      location.hash = '#/home'; return;
+    }
+    if (!state.admin.list && !state.admin.loading) loadAdmin();
+    var a = state.admin;
+    var rows = (a.list || []).map(function (u) {
+      var btns = '';
+      if (!u.isAdmin) {
+        if (u.status === 'pending') btns = '<button class="mini ok" data-e="' + esc(u.email) + '" data-s="approved" data-l="승인">승인</button><button class="mini" data-e="' + esc(u.email) + '" data-s="rejected" data-l="거절">거절</button>';
+        else if (u.status === 'approved') btns = '<button class="mini" data-e="' + esc(u.email) + '" data-s="disabled" data-l="사용 중지">사용 중지</button>';
+        else btns = '<button class="mini ok" data-e="' + esc(u.email) + '" data-s="approved" data-l="승인">승인</button>';
+      }
+      return '<div class="urow">' +
+        '<div class="uinfo"><div class="uemail">' + esc(u.email) + (u.isAdmin ? ' <span class="tag">관리자</span>' : '') + '</div>' +
+        '<div class="umeta"><span class="st st-' + u.status + '">' + (STATUS_LABEL[u.status] || u.status) + '</span>' +
+        (u.name ? ' · ' + esc(u.name) : '') + (u.requestedAt ? ' · 신청 ' + fmtDate(u.requestedAt) : '') + '</div></div>' +
+        '<div class="ubtns">' + btns + '</div></div>';
+    }).join('');
+    root.appendChild(el(
+      '<header class="topbar"><div class="month"><a class="icon-btn" href="#/home" aria-label="홈으로">' + ICON.prev + '</a><h1 style="text-align:left">사용자 승인</h1></div></header>' +
+      (a.error ? '<div class="banner warn" role="alert">' + esc(a.error) + '</div>' : '') +
+      '<div class="ulist">' + (a.loading && !a.list ? '<div class="empty">불러오는 중…</div>' : (rows || '<div class="empty">아직 로그인한 사용자가 없습니다</div>')) + '</div>' +
+      '<p class="hint">직원이 앱에서 Google로 로그인하면 여기에 "승인 대기"로 나타납니다.</p>'
+    ));
+    root.querySelectorAll('button.mini').forEach(function (b) {
+      b.onclick = function () { setStatus(b.dataset.e, b.dataset.s, b.dataset.l); };
+    });
+  }
+
   var ROUTES = {
+    admin: renderAdmin,
     home: renderHome,
     box: function (r) { renderPlaceholder(r, '보관함', '촬영한 영수증이 여기에 모입니다.<br>다음 단계에서 만듭니다.'); },
     budget: function (r) { renderPlaceholder(r, '예산', '구분별 예산·이월·추가 예산을 설정합니다.<br>다음 단계에서 만듭니다.'); }
@@ -225,12 +336,12 @@
   }
 
   function render() {
-    var tab = state.user ? currentTab() : 'home';
+    var tab = state.user && !state.pending ? currentTab() : 'home';
     var root = document.getElementById('view');
     root.innerHTML = '';
     ROUTES[tab](root);
     var nav = document.querySelector('.tabbar');
-    nav.hidden = !state.user;
+    nav.hidden = !state.user || !!state.pending || tab === 'admin';
     document.querySelectorAll('.tabbar a').forEach(function (a) {
       if (a.dataset.tab === tab) a.setAttribute('aria-current', 'page');
       else a.removeAttribute('aria-current');
@@ -254,8 +365,9 @@
   });
   window.addEventListener('online', function () { refresh(); });
 
+  if (state.user && state.user.approved === false) state.pending = { status: 'pending' };
   render();
-  if (state.user) { lastRefresh = Date.now(); refresh(); }
+  if (state.user) { lastRefresh = Date.now(); if (!state.pending) refresh(); }
 
   // ── 오프라인 캐시(서비스 워커) ──
   if ('serviceWorker' in navigator) {

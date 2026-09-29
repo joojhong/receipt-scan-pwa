@@ -2,7 +2,8 @@
    1) 버튼을 누르면 Google 동의 팝업 → code
    2) 중계 서버가 code를 access token + id token + refresh token으로 교환
    3) refresh token은 이 기기에만 저장, access token은 메모리에만
-   4) access token이 만료되면 refresh token을 중계 서버로 보내 새로 받음 */
+   4) access token이 만료되면 refresh token을 중계 서버로 보내 새로 받음
+   5) 관리자 승인이 안 된 계정은 서버가 403 NOT_APPROVED를 돌려줌 → 승인 대기 화면 */
 (function () {
   'use strict';
   var CFG = window.RS_CONFIG;
@@ -10,6 +11,7 @@
   var DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 
   var access = null;      // { token, exp }
+  var info = { idToken: null, isAdmin: false };  // 관리자 화면용(메모리에만)
   var inflight = null;    // 동시에 여러 번 갱신하지 않도록
 
   function load() {
@@ -20,19 +22,29 @@
   }
 
   function NeedLogin(msg) { var e = new Error(msg || '로그인이 필요합니다'); e.needLogin = true; return e; }
+  function NotApproved(d) {
+    var e = new Error(d.message || '관리자 승인이 필요합니다');
+    e.notApproved = true; e.approvalStatus = d.status || 'pending'; e.email = d.email;
+    return e;
+  }
 
-  async function relay(path, body) {
+  async function relay(path, body, opt) {
+    opt = opt || {};
     if (!CFG.relayUrl) throw new Error('중계 서버 주소가 설정되지 않았습니다');
+    var headers = { 'Content-Type': 'application/json' };
+    if (opt.idToken) headers.Authorization = 'Bearer ' + opt.idToken;
     var r = await fetch(CFG.relayUrl + path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
+      method: opt.method || 'POST',
+      headers: headers,
+      body: (opt.method || 'POST') === 'GET' ? undefined : JSON.stringify(body || {})
     });
     var data = await r.json().catch(function () { return {}; });
     if (!r.ok) {
-      var err = new Error((data.error && data.error.message) || ('서버 오류 ' + r.status));
+      var e = data.error || {};
+      var err = e.code === 'NOT_APPROVED' ? NotApproved(e) : new Error(e.message || ('서버 오류 ' + r.status));
       err.status = r.status;
-      err.code = data.error && data.error.code;
+      err.code = e.code;
+      err.refreshToken = e.refreshToken;
       throw err;
     }
     return data;
@@ -40,6 +52,7 @@
 
   function setAccess(d) {
     access = { token: d.accessToken, exp: Date.now() + (Number(d.expiresIn || 3600) - 60) * 1000 };
+    info = { idToken: d.idToken || null, isAdmin: !!d.isAdmin };
   }
 
   function waitForGis() {
@@ -71,14 +84,24 @@
             return reject(new Error('Google Drive 권한에 체크해야 앱을 쓸 수 있습니다. 다시 로그인해 주세요'));
           }
           try {
-            var d = await relay('/v1/auth/exchange', { code: resp.code });
+            var d;
+            try {
+              d = await relay('/v1/auth/exchange', { code: resp.code });
+            } catch (e) {
+              if (e.notApproved) {
+                // 승인 전: refresh token만 기기에 보관해 두었다가 [다시 확인] 때 씀
+                var rt = e.refreshToken || (prev && prev.email === e.email ? prev.refreshToken : null);
+                save({ email: e.email, refreshToken: rt, approved: false });
+              }
+              throw e;
+            }
             var refreshToken = d.refreshToken || (prev && prev.email === d.email ? prev.refreshToken : null);
             if (!refreshToken) {
               // 예전에 동의한 적이 있어 refresh token이 다시 나오지 않은 경우: 권한을 비우고 다시 받게 함
               await relay('/v1/auth/revoke', { token: d.accessToken }).catch(function () {});
               return reject(new Error('로그인 정보를 새로 받아야 합니다. [Google로 로그인]을 한 번 더 눌러 주세요'));
             }
-            save({ email: d.email, refreshToken: refreshToken });
+            save({ email: d.email, refreshToken: refreshToken, approved: true });
             setAccess(d);
             resolve({ email: d.email });
           } catch (e) { reject(e); }
@@ -96,10 +119,12 @@
     var s = load();
     if (!s || !s.refreshToken) throw NeedLogin();
     if (!inflight) {
+      // 승인 대기 중이어도 서버에 다시 물어봄(그 사이 승인됐을 수 있음)
       inflight = relay('/v1/auth/refresh', { refreshToken: s.refreshToken })
-        .then(function (d) { setAccess(d); return access.token; })
+        .then(function (d) { setAccess(d); s.approved = true; save(s); return access.token; })
         .catch(function (e) {
           if (e.status === 401) { save(null); access = null; throw NeedLogin('로그인이 만료되었습니다. 다시 로그인해 주세요'); }
+          if (e.notApproved) { access = null; s.approved = false; save(s); }
           throw e;
         })
         .finally(function () { inflight = null; });
@@ -111,7 +136,15 @@
     var s = load();
     save(null);
     access = null;
+    info = { idToken: null, isAdmin: false };
     if (s && s.refreshToken) await relay('/v1/auth/revoke', { token: s.refreshToken }).catch(function () {});
+  }
+
+  // 관리자 전용 서버 호출(본인 확인용 id token을 함께 보냄)
+  async function admin(path, body) {
+    await getToken();
+    if (!info.idToken) { access = null; await getToken(); }
+    return relay(path, body, { method: body === undefined ? 'GET' : 'POST', idToken: info.idToken });
   }
 
   window.RSAuth = {
@@ -119,7 +152,9 @@
     login: login,
     logout: logout,
     getToken: getToken,
-    user: function () { var s = load(); return s ? { email: s.email } : null; },
+    admin: admin,
+    isAdmin: function () { return info.isAdmin; },
+    user: function () { var s = load(); return s ? { email: s.email, approved: s.approved !== false } : null; },
     invalidate: function () { access = null; }
   };
 })();
