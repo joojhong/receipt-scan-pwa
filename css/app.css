@@ -69,3 +69,34 @@ button{font-family:inherit;color:inherit}
 #toast{position:fixed;left:50%;bottom:calc(var(--tabbar-h) + var(--safe-b) + 16px);transform:translateX(-50%);background:var(--dark);color:#fff;font-size:13px;padding:10px 14px;border-radius:12px;max-width:calc(100% - 40px);z-index:20}
 
 .version{padding:24px 20px 0;text-align:center;font-size:11px;color:#A3A6AD}
+
+/* 로그인 화면 */
+.welcome{min-height:calc(100vh - 80px);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px 28px;gap:14px}
+.welcome img{border-radius:18px}
+.welcome h1{font-size:24px;margin:4px 0 0}
+.welcome p{margin:0;color:var(--sub);font-size:15px;line-height:1.6}
+.google-btn{margin-top:14px;width:100%;max-width:320px;height:52px;border-radius:14px;border:1px solid #DADCE0;background:#fff;display:flex;align-items:center;justify-content:center;gap:10px;font-size:16px;font-weight:600;cursor:pointer}
+.google-btn:disabled{opacity:.5}
+.welcome .err{color:#A11D1D;font-size:14px;max-width:320px}
+.notes{margin:10px 0 0;padding:0;list-style:none;max-width:320px;text-align:left;font-size:13px;color:var(--sub);line-height:1.6}
+.notes li{padding-left:14px;position:relative;margin-top:6px}
+.notes li::before{content:'';position:absolute;left:2px;top:9px;width:5px;height:5px;border-radius:3px;background:#C9C7C1}
+.policy{font-size:12px;color:var(--sub);margin-top:8px}
+
+/* 상단 알림 띠 */
+.banner{margin:0 20px 10px;padding:10px 14px;border-radius:12px;background:#EEF1FC;color:#22379C;font-size:13px;line-height:1.5}
+.banner.warn{background:#FDECEC;color:#A11D1D}
+
+/* 계정 아이콘을 버튼으로 */
+button.avatar{border:0;cursor:pointer}
+
+/* 아래에서 올라오는 계정 메뉴 */
+.sheet-backdrop{position:fixed;inset:0;background:rgba(22,23,26,.45);display:flex;align-items:flex-end;justify-content:center;z-index:30}
+.sheet{width:100%;max-width:480px;background:#fff;border-radius:22px 22px 0 0;padding:10px 12px calc(16px + var(--safe-b));display:flex;flex-direction:column}
+.sheet .grab{width:40px;height:5px;border-radius:3px;background:#D9D7D1;align-self:center;margin-bottom:10px}
+.sheet-email{padding:8px 12px 12px;font-size:14px;color:var(--sub);border-bottom:1px solid var(--line);margin-bottom:4px}
+.sheet-item{display:block;width:100%;text-align:left;padding:14px 12px;border:0;background:transparent;font-size:16px;color:var(--ink);text-decoration:none;border-radius:10px;cursor:pointer}
+.sheet-item:active{background:#F6F5F1}
+.sheet-item.danger{color:#A11D1D}
+.sheet-item.sub{font-size:13px;color:var(--sub)}
+.tabbar[hidden]{display:none}
