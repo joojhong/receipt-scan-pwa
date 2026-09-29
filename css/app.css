@@ -100,3 +100,23 @@ button.avatar{border:0;cursor:pointer}
 .sheet-item.danger{color:#A11D1D}
 .sheet-item.sub{font-size:13px;color:var(--sub)}
 .tabbar[hidden]{display:none}
+
+/* 승인 대기 화면 */
+.linkish{margin-top:6px;border:0;background:transparent;color:var(--sub);font-size:13px;text-decoration:underline;cursor:pointer;padding:10px}
+a.banner{display:block;text-decoration:none}
+
+/* 사용자 승인(관리자) */
+.ulist{margin:4px 20px 0;background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.ulist .empty{margin:0;border:0;border-radius:0}
+.urow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px;border-bottom:1px solid var(--line)}
+.urow:last-child{border-bottom:0}
+.uinfo{min-width:0}
+.uemail{font-size:14px;font-weight:600;word-break:break-all}
+.umeta{font-size:12px;color:var(--sub);margin-top:4px}
+.tag{font-size:11px;font-weight:600;color:#22379C;background:#EEF1FC;border-radius:6px;padding:1px 6px}
+.st{font-weight:600}
+.st-pending{color:#8A4A06}.st-approved{color:#0F7B3F}.st-disabled,.st-rejected{color:#A11D1D}
+.ubtns{display:flex;gap:6px;flex-shrink:0}
+.mini{height:36px;padding:0 12px;border-radius:10px;border:1px solid #DADCE0;background:#fff;font-size:13px;font-weight:600;cursor:pointer}
+.mini.ok{background:var(--accent);border-color:var(--accent);color:#fff}
+.hint{margin:10px 20px;font-size:12px;color:var(--sub);line-height:1.5}
