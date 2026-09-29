@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>개인정보 처리방침 · 영수증 스캔</title>
+<style>
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#F4F3EF;color:#16171A;line-height:1.7}
+main{max-width:720px;margin:0 auto;padding:32px 20px 64px}
+h1{font-size:24px;margin:0 0 4px}
+h2{font-size:17px;margin:28px 0 8px}
+p,li{font-size:15px}
+.meta{color:#5E626A;font-size:13px}
+table{border-collapse:collapse;width:100%;font-size:14px;background:#fff}
+th,td{border:1px solid #E6E4DE;padding:8px 10px;text-align:left;vertical-align:top}
+th{background:#F6F5F1}
+</style>
+</head>
+<body>
+<main>
+<h1>개인정보 처리방침</h1>
+<p class="meta">영수증 스캔 앱 · 시행일 2026-09-29</p>
+
+<p>영수증 스캔(이하 "앱")은 NKMRO 직원이 경비 영수증을 촬영해 본인의 Google Drive와 Google 시트에 정리하고 청구용 PDF를 만드는 사내 업무용 앱입니다. 이 문서는 앱이 어떤 정보를 어디에 저장하고 누구에게 보내는지 설명합니다.</p>
+
+<h2>1. Google 계정으로 로그인할 때 받는 정보</h2>
+<ul>
+<li><b>이메일 주소</b>(openid, email): 로그인한 사람을 확인하고, AI 판독을 쓸 수 있는 계정인지 확인하는 데 씁니다.</li>
+<li><b>Google Drive 파일 권한</b>(drive.file): 앱이 직접 만든 폴더·파일(영수증 사진, 원장 시트, 청구 PDF)만 읽고 쓸 수 있습니다. 사용자의 다른 Drive 파일은 볼 수 없습니다.</li>
+</ul>
+
+<h2>2. 정보가 저장되는 곳</h2>
+<table>
+<tr><th>정보</th><th>저장 위치</th></tr>
+<tr><td>영수증 사진, 원장 시트, 청구 PDF</td><td>사용자 본인의 Google Drive (앱 전용 폴더)</td></tr>
+<tr><td>로그인 유지용 토큰, 업로드 대기 중인 사진</td><td>사용자 기기(브라우저 저장소)</td></tr>
+<tr><td>AI 판독 허용 계정 목록, 계정별 하루 판독 횟수</td><td>앱 운영용 Google Cloud(Firestore)</td></tr>
+</table>
+<p>앱 운영자는 사용자의 Drive에 저장된 영수증 사진이나 시트 내용을 따로 모으거나 보관하지 않습니다.</p>
+
+<h2>3. 외부로 보내는 정보 (AI 판독)</h2>
+<p>AI 판독을 사용하면 영수증 사진이 앱의 중계 서버(Google Cloud Run)를 거쳐 <b>DeepSeek</b>로 전송되어 거래일시·금액·가맹점을 읽습니다. DeepSeek는 개인정보를 중국에서 처리·저장한다고 밝히고 있습니다. 중계 서버는 판독 결과만 돌려주고 사진을 저장하지 않습니다. 앱은 AI 판독을 처음 쓸 때 이 전송에 대한 동의를 받습니다. 영수증에는 카드 번호 일부 등이 인쇄되어 있을 수 있으니 유의해 주세요.</p>
+
+<h2>4. 정보의 이용 목적</h2>
+<p>위 정보는 영수증 정리, 청구 PDF 작성, AI 판독 기능 제공에만 씁니다. 광고, 판매, 제3자 제공에 쓰지 않습니다.</p>
+
+<h2>5. 삭제와 권한 철회</h2>
+<ul>
+<li>Drive의 앱 전용 폴더를 지우면 사진·시트·PDF가 삭제됩니다.</li>
+<li><a href="https://myaccount.google.com/permissions">Google 계정의 서드파티 앱 권한</a>에서 "영수증 스캔"의 접근 권한을 언제든 없앨 수 있습니다.</li>
+<li>AI 판독 허용 목록에서 빠지기를 원하면 아래 문의처로 알려 주세요.</li>
+</ul>
+
+<h2>6. 문의</h2>
+<p>앱 관리자에게 문의해 주세요. 관리자 이메일은 Google 로그인 화면에서 앱 이름("영수증 스캔")을 누르면 나오는 개발자 정보에서 확인할 수 있습니다.</p>
+</main>
+</body>
+</html>
