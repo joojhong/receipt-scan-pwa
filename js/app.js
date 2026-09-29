@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '0.3.0';
+  var APP_VERSION = '0.4.0';
   var CATEGORIES = ['경비', '접대비', '회의비', '출장비'];
   var CACHE_KEY = 'rs.cache.receipts';
 
@@ -146,7 +146,8 @@
     root.querySelector('#nextMonth').onclick = function () {
       if (!isCurrent(view)) { view = shift(view, 1); render(); }
     };
-    root.querySelector('#capture').onclick = function () { toast('촬영 기능은 다음 단계에서 연결됩니다'); };
+    // 3단계 초반: 실기기 검증용 카메라 시험 화면으로 연결(촬영 화면 완성 후 교체)
+    root.querySelector('#capture').onclick = function () { location.href = 'camtest.html'; };
     root.querySelector('#avatar').onclick = openAccountSheet;
   }
 
@@ -258,6 +259,11 @@
 
   // ── 오프라인 캐시(서비스 워커) ──
   if ('serviceWorker' in navigator) {
+    // 새 버전이 설치되면 한 번만 자동 새로고침(처음 설치 때는 하지 않음)
+    var hadController = !!navigator.serviceWorker.controller, reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (hadController && !reloaded) { reloaded = true; location.reload(); }
+    });
     window.addEventListener('load', function () {
       navigator.serviceWorker.register('sw.js').catch(function (e) {
         console.warn('서비스 워커 등록 실패', e);
