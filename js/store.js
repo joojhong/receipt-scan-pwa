@@ -9,13 +9,13 @@
   var SHEETS = 'https://sheets.googleapis.com/v4/spreadsheets';
   var FOLDER = 'application/vnd.google-apps.folder';
   var SHEET = 'application/vnd.google-apps.spreadsheet';
-  var SCHEMA_VERSION = 2; // 2: 상태와 거래일시 사이에 카드사 열 추가
+  var SCHEMA_VERSION = 3; // 2: 카드사 열(F) 추가, 3: 카드 구분 열(G, 법인카드/개인카드) 추가
 
-  // 열 순서는 "데이터·API 스펙" 탭 표 순서(A~U)
-  var RECEIPT_HEADERS = ['ID', '유형', '촬영일시', '구분', '상태', '카드사', '거래일시', '귀속 월', '금액', '가맹점명', '가맹점 주소',
+  // 열 순서는 "데이터·API 스펙" 탭 표 순서(A~V)
+  var RECEIPT_HEADERS = ['ID', '유형', '촬영일시', '구분', '상태', '카드사', '카드 구분', '거래일시', '귀속 월', '금액', '가맹점명', '가맹점 주소',
     '내역', '메모', '영수증 폭', '판독 신뢰도', '확인 사유', '판독 시도', '원본 파일 ID', '청구 PDF ID', '청구일시', '앱 수정일시'];
   var BUDGET_HEADERS = ['ID', '적용 월', '구분', '유형', '이월 방식', '금액', '메모', '앱 수정일시'];
-  var COL = { id: 0, kind: 1, capturedAt: 2, category: 3, status: 4, card: 5, txAt: 6, month: 7, amount: 8 };
+  var COL = { id: 0, kind: 1, capturedAt: 2, category: 3, status: 4, card: 5, cardType: 6, txAt: 7, month: 8, amount: 9 };
 
   function wsKey(email) { return 'rs.ws.' + email; }
   function loadWs(email) { try { return JSON.parse(localStorage.getItem(wsKey(email)) || 'null'); } catch (e) { return null; } }
@@ -80,7 +80,7 @@
       method: 'POST', json: {
         valueInputOption: 'RAW',
         data: [
-          { range: '영수증!A1:U1', values: [RECEIPT_HEADERS] },
+          { range: '영수증!A1:V1', values: [RECEIPT_HEADERS] },
           { range: '예산!A1:H1', values: [BUDGET_HEADERS] },
           { range: '메타!A1:B1', values: [['스키마 버전', SCHEMA_VERSION]] }
         ]
@@ -88,31 +88,38 @@
     });
   }
 
-  // 예전 형식 시트를 새 형식으로 고침
+  // 예전 형식 시트를 새 형식으로 고침(버전마다 열 하나씩 끼워 넣음, 기존 데이터는 오른쪽으로 밀림)
+  var MIGRATIONS = [
+    { to: 2, index: 5, cell: 'F1', header: '카드사' },
+    { to: 3, index: 6, cell: 'G1', header: '카드 구분' }
+  ];
+
   async function migrate(sheetId) {
     var meta = await api(SHEETS + '/' + sheetId + '/values/' + encodeURIComponent('메타!B1') + '?valueRenderOption=UNFORMATTED_VALUE');
     var ver = Number(meta.values && meta.values[0] && meta.values[0][0]) || 1;
     if (ver >= SCHEMA_VERSION) return;
-    if (ver < 2) {
-      // v1 → v2: F열(상태 다음)에 빈 "카드사" 열을 끼워 넣음. 기존 데이터는 오른쪽으로 한 칸씩 밀림
-      var info = await api(SHEETS + '/' + sheetId + '?fields=sheets.properties');
-      var tab = info.sheets.find(function (s) { return s.properties.title === '영수증'; });
-      if (!tab) return;
-      var head = await api(SHEETS + '/' + sheetId + '/values/' + encodeURIComponent('영수증!F1'));
-      var already = head.values && head.values[0] && head.values[0][0] === '카드사';
+    var info = await api(SHEETS + '/' + sheetId + '?fields=sheets.properties');
+    var tab = info.sheets.find(function (s) { return s.properties.title === '영수증'; });
+    if (!tab) return;
+    for (var i = 0; i < MIGRATIONS.length; i++) {
+      var mg = MIGRATIONS[i];
+      if (ver >= mg.to) continue;
+      var head = await api(SHEETS + '/' + sheetId + '/values/' + encodeURIComponent('영수증!' + mg.cell));
+      var already = head.values && head.values[0] && head.values[0][0] === mg.header;
       if (!already) {
         await api(SHEETS + '/' + sheetId + ':batchUpdate', {
           method: 'POST', json: { requests: [{ insertDimension: {
-            range: { sheetId: tab.properties.sheetId, dimension: 'COLUMNS', startIndex: 5, endIndex: 6 },
+            range: { sheetId: tab.properties.sheetId, dimension: 'COLUMNS', startIndex: mg.index, endIndex: mg.index + 1 },
             inheritFromBefore: false } }] }
         });
       }
       await api(SHEETS + '/' + sheetId + '/values:batchUpdate', {
         method: 'POST', json: { valueInputOption: 'RAW', data: [
-          { range: '영수증!F1', values: [['카드사']] },
-          { range: '메타!B1', values: [[2]] }
+          { range: '영수증!' + mg.cell, values: [[mg.header]] },
+          { range: '메타!B1', values: [[mg.to]] }
         ] }
       });
+      ver = mg.to;
     }
   }
 
@@ -135,7 +142,7 @@
 
   // 영수증 탭 전체 읽기 → [{id, category, status, month, amount}]
   async function readReceipts(ws) {
-    var d = await api(SHEETS + '/' + ws.sheetId + '/values/' + encodeURIComponent('영수증!A2:U') + '?valueRenderOption=UNFORMATTED_VALUE');
+    var d = await api(SHEETS + '/' + ws.sheetId + '/values/' + encodeURIComponent('영수증!A2:V') + '?valueRenderOption=UNFORMATTED_VALUE');
     return (d.values || []).filter(function (r) { return r[COL.id]; }).map(function (r) {
       var amt = r[COL.amount];
       if (typeof amt === 'string') amt = Number(amt.replace(/[^\d.-]/g, ''));
@@ -150,6 +157,7 @@
         category: r[COL.category] || '',
         status: r[COL.status] || '',
         card: r[COL.card] || '',
+        cardType: r[COL.cardType] || '',
         month: String(m || '').slice(0, 7),
         amount: isFinite(amt) ? Number(amt) : 0
       };
