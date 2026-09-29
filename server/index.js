@@ -49,6 +49,10 @@ function fail(res, status, code, message) {
 }
 
 function readJson(req) {
+  // Cloud Run 함수(functions-framework)는 JSON 본문을 미리 읽어 req.body에 넣어 줌
+  if (req.body !== undefined && !Buffer.isBuffer(req.body)) {
+    return Promise.resolve(req.body && typeof req.body === 'object' ? req.body : {});
+  }
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
@@ -148,7 +152,7 @@ const routes = {
   'GET /healthz': (req, res) => send(res, 200, { ok: true })
 };
 
-const server = http.createServer(async (req, res) => {
+async function app(req, res) {
   cors(req, res);
   if (req.method === 'OPTIONS') { res.statusCode = 204; return res.end(); }
   const path = (req.url || '/').split('?')[0];
@@ -166,7 +170,10 @@ const server = http.createServer(async (req, res) => {
     console.error('handler error', e && e.message);
     fail(res, 500, 'INTERNAL', '서버 오류');
   }
-});
+}
 
 if (!CLIENT_ID || !CLIENT_SECRET) console.warn('GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET 환경변수가 없습니다');
-server.listen(PORT, () => console.log('listening on', PORT));
+// Cloud Run 함수로 배포할 때: 진입점(함수 이름) = relay
+exports.relay = app;
+// 직접 실행할 때(node index.js): 일반 HTTP 서버
+if (require.main === module) http.createServer(app).listen(PORT, () => console.log('listening on', PORT));
