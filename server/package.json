@@ -1,0 +1,10 @@
+{
+  "name": "receipt-scan-relay",
+  "version": "0.3.0",
+  "private": true,
+  "description": "영수증 스캔 중계 서버 (Cloud Run)",
+  "main": "index.js",
+  "scripts": { "start": "node index.js" },
+  "engines": { "node": ">=20" },
+  "dependencies": { "google-auth-library": "^10.5.0" }
+}
