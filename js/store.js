@@ -140,28 +140,56 @@
     return ws;
   }
 
-  // 영수증 탭 전체 읽기 → [{id, category, status, month, amount}]
+  // 시트 날짜 칸 → 문자열. PC에서 날짜를 입력하면 시트가 숫자(일련번호)로 줄 수 있음
+  function serialToIso(v, monthOnly) {
+    if (typeof v !== 'number') return String(v || '');
+    var dt = new Date(Date.UTC(1899, 11, 30) + Math.round(v * 86400000));
+    var p = function (n) { return String(n).padStart(2, '0'); };
+    var d = dt.getUTCFullYear() + '-' + p(dt.getUTCMonth() + 1);
+    if (monthOnly) return d;
+    return d + '-' + p(dt.getUTCDate()) + 'T' + p(dt.getUTCHours()) + ':' + p(dt.getUTCMinutes()) + ':00';
+  }
+
+  // 영수증 탭 전체 읽기 → [{id, category, status, month, amount, …}]
   async function readReceipts(ws) {
     var d = await api(SHEETS + '/' + ws.sheetId + '/values/' + encodeURIComponent('영수증!A2:V') + '?valueRenderOption=UNFORMATTED_VALUE');
-    return (d.values || []).filter(function (r) { return r[COL.id]; }).map(function (r) {
+    return (d.values || []).filter(function (r) { return r[COL.id]; }).map(function (r, i) {
       var amt = r[COL.amount];
-      if (typeof amt === 'string') amt = Number(amt.replace(/[^\d.-]/g, ''));
-      var m = r[COL.month];
-      // PC에서 "2026-09"를 입력하면 시트가 날짜로 바꿔 숫자(일련번호)로 올 수 있음
-      if (typeof m === 'number') {
-        var dt = new Date(Date.UTC(1899, 11, 30) + m * 86400000);
-        m = dt.getUTCFullYear() + '-' + String(dt.getUTCMonth() + 1).padStart(2, '0');
-      }
+      if (typeof amt === 'string') amt = amt.trim() === '' ? NaN : Number(amt.replace(/[^\d.-]/g, ''));
+      if (amt === undefined || amt === '') amt = NaN;
+      var w = Number(r[14]);
       return {
         id: String(r[COL.id]),
+        row: i + 2,                                   // 시트의 줄 번호(2단계 상세 저장에서 씀)
+        kind: r[COL.kind] || '영수증',
+        capturedAt: serialToIso(r[COL.capturedAt]),
         category: r[COL.category] || '',
         status: r[COL.status] || '',
         card: r[COL.card] || '',
         cardType: r[COL.cardType] || '',
-        month: String(m || '').slice(0, 7),
-        amount: isFinite(amt) ? Number(amt) : 0
+        txAt: serialToIso(r[COL.txAt]),
+        month: serialToIso(r[COL.month], true).slice(0, 7),
+        amount: isFinite(amt) ? Number(amt) : 0,
+        hasAmount: isFinite(amt),
+        merchant: String(r[10] || ''),
+        desc: String(r[12] || ''),
+        memo: String(r[13] || ''),
+        widthMm: w > 0 ? w : 80,
+        reason: String(r[16] || ''),
+        fileId: String(r[18] || ''),
+        pdfId: String(r[19] || ''),
+        claimedAt: serialToIso(r[20])
       };
     });
+  }
+
+  // Drive 파일 내용 받기(썸네일 만들 때 씀)
+  async function download(fileId) {
+    var token = await RSAuth.getToken();
+    var r = await fetch(DRIVE + '/' + fileId + '?alt=media', { headers: { Authorization: 'Bearer ' + token } });
+    if (r.status === 401) { RSAuth.invalidate(); token = await RSAuth.getToken(); r = await fetch(DRIVE + '/' + fileId + '?alt=media', { headers: { Authorization: 'Bearer ' + token } }); }
+    if (!r.ok) { var e = new Error('Google API 오류 ' + r.status); e.status = r.status; throw e; }
+    return r.blob();
   }
 
   // ── 촬영한 영수증 올리기(업로드 대기열이 씀) ──
@@ -237,6 +265,7 @@
     appendReceipt: appendReceipt,
     ensureWorkspace: ensureWorkspace,
     readReceipts: readReceipts,
+    download: download,
     workspace: loadWs,
     sheetUrl: function (ws) { return 'https://docs.google.com/spreadsheets/d/' + ws.sheetId + '/edit'; },
     folderUrl: function (ws) { return 'https://drive.google.com/drive/folders/' + ws.rootId; }

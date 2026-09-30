@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '0.6.5';
+  var APP_VERSION = '0.7.0';
   var CATEGORIES = ['경비', '접대비', '회의비', '출장비'];
   var CACHE_KEY = 'rs.cache.receipts';
 
@@ -168,6 +168,7 @@
   async function logout() {
     await RSAuth.logout();
     RSCapture.reset();
+    RSBox.reset();
     state.user = null; state.ws = null; state.receipts = []; state.error = ''; state.pending = null;
     state.admin = { list: null, loading: false, error: '', waiting: 0 };
     saveCache([]);
@@ -190,7 +191,7 @@
     });
 
     var cards = CATEGORIES.map(function (c) {
-      return '<a class="cat" href="#/box" data-cat="' + c + '">' +
+      return '<a class="cat" href="#/box?cat=' + encodeURIComponent(c) + '" data-cat="' + c + '">' +
         '<div class="name">' + c + '</div>' +
         '<div class="sum">' + won(byCat[c]) + '<small>원</small></div>' +
         '<div class="bar"></div>' +
@@ -387,7 +388,8 @@
       state.uploadWaiting = list.length;
       var last = list.filter(function (x) { return x.error; })[0];
       state.uploadError = last ? last.error : '';
-      if (currentTab() === 'home') render();
+      var t = currentTab();
+      if (t === 'home' || t === 'box') render();
     }).catch(function () {});
   }
   RSQueue.onChange(updateWaiting);
@@ -404,24 +406,57 @@
     });
   }
 
+  function query() {
+    var q = {}, s = location.hash.split('?')[1] || '';
+    s.split('&').forEach(function (kv) { if (!kv) return; var i = kv.indexOf('='); q[decodeURIComponent(i < 0 ? kv : kv.slice(0, i))] = i < 0 ? '' : decodeURIComponent(kv.slice(i + 1)); });
+    return q;
+  }
+
   function renderCapture(root) {
+    var q = query();
+    if (q.from) state.captureFrom = q.from;
     RSCapture.mount(root, {
       email: state.user.email,
+      category: q.cat || '',
       toast: toast,
       onSaved: function () { updateWaiting(); kickQueue(); },
       onClose: function (n) {
-        location.hash = '#/home';
+        var from = state.captureFrom; state.captureFrom = '';
+        location.hash = from === 'box' ? '#/box' : '#/home';
         if (n) toast(n + '장 저장했습니다');
         if (state.needRefresh) { state.needRefresh = false; refresh(); }
       }
     });
   }
 
+  // ── 화면: 보관함 ──
+  function renderBox(root) {
+    if (!state.user || state.pending) return renderHome(root);
+    var q = query();
+    RSBox.render(root, {
+      email: state.user.email,
+      receipts: state.receipts,
+      month: ym(view),
+      category: q.cat || '',
+      loading: state.loading,
+      error: state.error,
+      offline: state.offline,
+      ws: state.ws,
+      toast: toast,
+      refresh: function () { refresh(); kickQueue(); },
+      go: function (h) { location.hash = h; },
+      isActive: function () { return currentTab() === 'box'; },
+      rerender: render
+    });
+    // 구분을 주소에 남기지 않음(다시 그릴 때 사용자가 고른 구분이 덮어써지지 않게)
+    if (q.cat) history.replaceState(null, '', '#/box');
+  }
+
   var ROUTES = {
     capture: renderCapture,
     admin: renderAdmin,
     home: renderHome,
-    box: function (r) { renderPlaceholder(r, '보관함', '촬영한 영수증이 여기에 모입니다.<br>다음 단계에서 만듭니다.'); },
+    box: renderBox,
     budget: function (r) { renderPlaceholder(r, '예산', '구분별 예산·이월·추가 예산을 설정합니다.<br>다음 단계에서 만듭니다.'); }
   };
 
