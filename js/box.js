@@ -394,8 +394,11 @@
   function explain(it) {
     if (!it) return;
     if (it.st === 'upload') ctx.toast(it.upError ? '아직 Drive에 못 올렸습니다. 인터넷이 연결되면 다시 올립니다' : 'Drive에 올리는 중입니다');
-    else if (it.st === '판독대기') ctx.toast('판독 대기 중이라 아직 고를 수 없습니다. 날짜·금액이 채워지면 고를 수 있습니다');
-    else if (it.st === '확인필요') ctx.toast('확인이 필요한 영수증입니다. 값을 채우면 고를 수 있습니다');
+    else if (it.st === '판독대기' || it.st === '확인필요') {
+      // 체크칸을 눌러도 바로 입력 화면으로 보냄(거래일·금액을 넣고 저장하면 고를 수 있음)
+      ctx.go('#/detail?id=' + encodeURIComponent(it.id));
+      setTimeout(function () { ctx.toast('거래일·금액을 넣고 [저장]을 누르면 고를 수 있습니다'); }, 50);
+    }
   }
 
   // ── 썸네일 ──
