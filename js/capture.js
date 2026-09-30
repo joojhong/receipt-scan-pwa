@@ -22,7 +22,7 @@
     };
   }
   function savePrefs(p) {
-    try { localStorage.setItem(PREF_KEY, JSON.stringify({ cardType: p.cardType, widthMm: p.widthMm, mode: p.mode })); } catch (e) { /* 무시 */ }
+    try { localStorage.setItem(PREF_KEY, JSON.stringify({ cardType: p.cardType, widthMm: p.widthMm, mode: p.mode === 'orig' ? 'gray' : p.mode })); } catch (e) { /* 무시 */ }
   }
   var PAY_LABEL = { '카드(개인)': '개인 카드', '카드(법인)': '법인 카드', '현금': '현금' };
   function widthLabel(w) { return w === 80 ? '보통(80mm)' : w === 58 ? '좁은 것(58mm)' : '기타(' + w + 'mm)'; }
@@ -135,6 +135,7 @@
           '<div class="seg">' +
             '<button type="button" class="' + (p.mode === 'gray' ? 'on' : '') + '" data-mode="gray">흑백</button>' +
             '<button type="button" class="' + (p.mode === 'color' ? 'on' : '') + '" data-mode="color">컬러</button>' +
+            '<button type="button" class="' + (p.mode === 'orig' ? 'on' : '') + '" data-mode="orig">원본</button>' +
           '</div>' +
           '<button class="btn-alt small" id="rotBtn" type="button">' + ICON.rotate + '회전</button>' +
         '</div>' +
@@ -242,7 +243,11 @@
     var n = $('nextBtn');
     if (n) n.onclick = toPreview;
     S.el.querySelectorAll('[data-mode]').forEach(function (b) {
-      b.onclick = function () { S.prefs.mode = b.dataset.mode; savePrefs(S.prefs); draw(); };
+      b.onclick = function () {
+        S.prefs.mode = b.dataset.mode;
+        if (b.dataset.mode !== 'orig') savePrefs(S.prefs);
+        draw();
+      };
     });
     var rb = $('rotBtn');
     if (rb) rb.onclick = function () { S.rot = (S.rot + 1) % 4; drawPreview(); };
@@ -284,6 +289,7 @@
       S.work = await RSImaging.open(file);
       S.corners = defaultCorners(S.work, 0.06);
       S.warped = null; S.rot = 0; S.memo = ''; S.warpFailed = false;
+      if (S.prefs.mode === 'orig') S.prefs.mode = loadPrefs().mode;
       S.busy = ''; S.step = 'adjust'; draw();
     } catch (e) {
       S.busy = '';
@@ -421,8 +427,13 @@
     S.busy = ''; S.step = 'preview'; draw();
   }
 
+  // 흑백·컬러 = 스캔처럼 보정(그림자·조명 얼룩 제거), 원본 = 원근만 바로잡은 사진 그대로
+  function look(c) {
+    return S.prefs.mode === 'orig' ? c : RSImaging.scan(c, S.prefs.mode === 'color' ? 'color' : 'gray');
+  }
+
   function finalCanvas() {
-    return RSImaging.rotate(RSImaging.enhance(S.warped, S.prefs.mode), S.rot);
+    return RSImaging.rotate(look(S.warped), S.rot);
   }
 
   function drawPreview() {
@@ -431,7 +442,7 @@
     if (!stage || !cv) return;
     // 미리보기는 작은 크기로 만들어 빠르게 보여 줌
     var small = RSImaging.scaled(S.warped, 1200);
-    var img = RSImaging.rotate(RSImaging.enhance(small, S.prefs.mode), S.rot);
+    var img = RSImaging.rotate(look(small), S.rot);
     var maxW = stage.clientWidth || (window.innerWidth - 32), maxH = Math.max(240, window.innerHeight * 0.5);
     var s = Math.min(maxW / img.width, maxH / img.height, 1.5), dpr = window.devicePixelRatio || 1;
     cv.style.width = Math.round(img.width * s) + 'px'; cv.style.height = Math.round(img.height * s) + 'px';

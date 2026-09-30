@@ -159,6 +159,99 @@
     return c;
   }
 
+  // 스캔처럼 보정: 종이의 밝기를 부분마다 구해(배경) 나눠 줌 → 그림자·조명 얼룩·구김 음영이 빠지고 종이는 고르게 흰색
+  // 1) 작게 줄인 사진에서 "주변에서 가장 밝은 값"을 구하면 글자가 지워진 종이 밝기가 됨(최댓값 필터)
+  // 2) 부드럽게 펴서 원래 크기로 늘림 3) 원래 사진 ÷ 종이 밝기 4) 글자를 조금 더 진하게
+  function boxMax(src, w, h, r) {
+    var tmp = new Float32Array(w * h), out = new Float32Array(w * h), x, y, k, m;
+    for (y = 0; y < h; y++) for (x = 0; x < w; x++) {
+      m = 0;
+      for (k = Math.max(0, x - r); k <= Math.min(w - 1, x + r); k++) if (src[y * w + k] > m) m = src[y * w + k];
+      tmp[y * w + x] = m;
+    }
+    for (y = 0; y < h; y++) for (x = 0; x < w; x++) {
+      m = 0;
+      for (k = Math.max(0, y - r); k <= Math.min(h - 1, y + r); k++) if (tmp[k * w + x] > m) m = tmp[k * w + x];
+      out[y * w + x] = m;
+    }
+    return out;
+  }
+  function boxBlur(src, w, h, r) {
+    var tmp = new Float32Array(w * h), out = new Float32Array(w * h), x, y, k, s, c;
+    for (y = 0; y < h; y++) for (x = 0; x < w; x++) {
+      s = 0; c = 0;
+      for (k = Math.max(0, x - r); k <= Math.min(w - 1, x + r); k++) { s += src[y * w + k]; c++; }
+      tmp[y * w + x] = s / c;
+    }
+    for (y = 0; y < h; y++) for (x = 0; x < w; x++) {
+      s = 0; c = 0;
+      for (k = Math.max(0, y - r); k <= Math.min(h - 1, y + r); k++) { s += tmp[k * w + x]; c++; }
+      out[y * w + x] = s / c;
+    }
+    return out;
+  }
+  // 한 채널(또는 밝기)의 종이 밝기 지도를 원래 크기로 만들어 돌려줌
+  function paperMap(chan, w, h) {
+    var s = Math.min(1, 160 / Math.max(w, h)) , sw = Math.max(8, Math.round(w * s)), sh = Math.max(8, Math.round(h * s));
+    var small = new Float32Array(sw * sh), x, y;
+    for (y = 0; y < sh; y++) for (x = 0; x < sw; x++) {
+      // 칸 안의 가장 밝은 값(작게 줄이면서 글자를 먼저 지움)
+      var x0 = Math.floor(x * w / sw), x1 = Math.max(x0 + 1, Math.floor((x + 1) * w / sw));
+      var y0 = Math.floor(y * h / sh), y1 = Math.max(y0 + 1, Math.floor((y + 1) * h / sh));
+      var m = 0, stepX = Math.max(1, (x1 - x0) >> 3), stepY = Math.max(1, (y1 - y0) >> 3);
+      for (var yy = y0; yy < y1; yy += stepY) for (var xx = x0; xx < x1; xx += stepX) { var v = chan[yy * w + xx]; if (v > m) m = v; }
+      small[y * sw + x] = m;
+    }
+    var bg = boxBlur(boxMax(small, sw, sh, 2), sw, sh, 3);
+    // 원래 크기로 늘림(양선형)
+    var out = new Float32Array(w * h);
+    for (y = 0; y < h; y++) {
+      var fy = Math.min(sh - 1.001, Math.max(0, (y + 0.5) * sh / h - 0.5)), y0i = fy | 0, ty = fy - y0i;
+      for (x = 0; x < w; x++) {
+        var fx = Math.min(sw - 1.001, Math.max(0, (x + 0.5) * sw / w - 0.5)), x0i = fx | 0, tx = fx - x0i;
+        var i = y0i * sw + x0i;
+        out[y * w + x] = (bg[i] * (1 - tx) + bg[i + 1] * tx) * (1 - ty) + (bg[i + sw] * (1 - tx) + bg[i + sw + 1] * tx) * ty;
+      }
+    }
+    return out;
+  }
+
+  function scan(src, mode) {
+    var w = src.width, h = src.height;
+    var c = canvas(w, h), g = c.getContext('2d');
+    g.drawImage(src, 0, 0);
+    var img = g.getImageData(0, 0, w, h), d = img.data, n = w * h, i, p;
+    // 글자를 진하게, 종이는 하얗게: 0.0~1.0 비율에 곡선 적용
+    var curve = new Uint8ClampedArray(1025);
+    for (i = 0; i <= 1024; i++) {
+      var t = i / 1024;                       // 종이 밝기 대비 비율(1 = 종이)
+      var v = (t - 0.18) / (0.86 - 0.18);     // 0.86 이상은 흰색, 0.18 이하는 검정
+      v = v <= 0 ? 0 : v >= 1 ? 1 : Math.pow(v, 1.35);
+      curve[i] = v * 255;
+    }
+    if (mode === 'color') {
+      for (var ch = 0; ch < 3; ch++) {
+        var chan = new Float32Array(n);
+        for (p = 0; p < n; p++) chan[p] = d[p * 4 + ch];
+        var bg = paperMap(chan, w, h);
+        for (p = 0; p < n; p++) {
+          var r = chan[p] / Math.max(24, bg[p]);
+          d[p * 4 + ch] = curve[Math.min(1024, (r * 1024) | 0)];
+        }
+      }
+    } else {
+      var lum = new Float32Array(n);
+      for (p = 0; p < n; p++) lum[p] = (d[p * 4] * 77 + d[p * 4 + 1] * 150 + d[p * 4 + 2] * 29) / 256;
+      var bgL = paperMap(lum, w, h);
+      for (p = 0; p < n; p++) {
+        var v2 = curve[Math.min(1024, ((lum[p] / Math.max(24, bgL[p])) * 1024) | 0)];
+        d[p * 4] = d[p * 4 + 1] = d[p * 4 + 2] = v2;
+      }
+    }
+    g.putImageData(img, 0, 0);
+    return c;
+  }
+
   // 시계 방향 90° × turns
   function rotate(src, turns) {
     turns = ((turns % 4) + 4) % 4;
@@ -225,6 +318,7 @@
 
   window.RSImaging = {
     textSideways: textSideways,
+    scan: scan,
     open: open, warp: warp, enhance: enhance, rotate: rotate, scaled: scaled, jpeg: jpeg, order: order, canvas: canvas
   };
 })();
