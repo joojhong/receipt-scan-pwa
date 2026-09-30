@@ -144,3 +144,42 @@ a.banner{display:block;text-decoration:none}
 .m-ok{color:#0F7B3F;background:#E6F4EC}
 .m-diff{color:#8A4A06;background:#FCEFDD}
 .m-none{color:var(--sub);background:#F0EFEA;font-weight:600}
+
+/* 촬영 화면 */
+.cap{padding:0 0 12px}
+.cap-top{display:flex;align-items:center;gap:4px;padding:4px 12px 4px 4px}
+.cap-top h1{font-size:19px;font-weight:700;margin:0;flex:1}
+.cap-sub{font-size:13px;color:var(--sub)}
+.cap-body{padding:0 20px}
+.cap-label{font-size:13px;font-weight:600;color:var(--sub);margin:16px 0 8px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip-btn{min-height:44px;padding:0 16px;border-radius:12px;border:1px solid #DADCE0;background:#fff;font-size:15px;font-weight:600;cursor:pointer}
+.chip-btn.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.cap-other{margin-top:10px;display:flex;align-items:center;gap:8px;font-size:15px}
+.cap-other input{width:100px;height:44px;border:1px solid #DADCE0;border-radius:10px;padding:0 12px;font-size:16px;font-family:inherit}
+.cap-tip{font-size:13px;color:var(--sub);line-height:1.5;margin:14px 20px 0}
+.cap-body .cap-tip{margin:18px 0 0}
+.cap-busy{font-size:14px;color:var(--accent);margin:12px 0 0}
+.cap .err{color:#A11D1D;font-size:14px;line-height:1.5;margin:12px 20px 0}
+.cap-body .err{margin:12px 0 0}
+.cap-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:18px 20px 0}
+.cap-actions.three{grid-template-columns:.9fr 1.15fr 1.15fr;gap:8px;padding-left:16px;padding-right:16px}
+.cap-actions.three .cta,.cap-actions.three .btn-alt{font-size:14px;letter-spacing:-.3px}
+.cap-actions .cta,.btn-alt{height:52px;border-radius:14px;font-size:15px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;padding:0 8px;text-align:center;line-height:1.2}
+.btn-alt{border:1px solid #DADCE0;background:#fff;color:var(--ink)}
+.btn-alt svg{width:18px;height:18px;fill:none;stroke:var(--ink);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.btn-alt.small{height:40px;padding:0 14px;font-size:14px}
+.cta.disabled,.btn-alt.disabled,.cta:disabled,.btn-alt:disabled{opacity:.5;pointer-events:none}
+.cap-stage{position:relative;margin:8px 16px 0;display:flex;justify-content:center;background:#1F2023;border-radius:14px;overflow:hidden;min-height:200px;align-items:center}
+.cap-stage canvas{display:block}
+.cap-stage.prev{background:#E9E8E3}
+.loupe[hidden]{display:none!important}
+.loupe{position:absolute;width:120px;height:120px;border-radius:60px;border:3px solid #fff;box-shadow:0 2px 10px rgba(0,0,0,.4);pointer-events:none}
+.cap-sum{margin:0 20px 4px;font-size:13px;color:var(--sub)}
+.cap-tools{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 20px 0}
+.seg{display:flex;border:1px solid #DADCE0;border-radius:12px;overflow:hidden;background:#fff}
+.seg button{height:40px;padding:0 18px;border:0;background:transparent;font-size:14px;font-weight:600;cursor:pointer}
+.seg button.on{background:var(--ink);color:#fff}
+.cap-memo{display:block;width:calc(100% - 40px);margin:12px 20px 0;height:44px;border:1px solid #DADCE0;border-radius:10px;padding:0 12px;font-size:16px;font-family:inherit;background:#fff}
+button.banner{display:block;width:calc(100% - 40px);text-align:left;border:0;cursor:pointer;font-family:inherit}
+.banner.up{background:#FFF4E0;color:#8A4A06}
