@@ -204,7 +204,7 @@
     var title = isFile ? (it.desc || '파일 첨부') :
       (it.merchant || (it.st === 'upload' || it.st === '판독대기' ? '판독 전 영수증' : '가맹점명 없음'));
     var date = it.txAt ? shortDate(it.txAt, true) : (it.capturedAt ? '촬영 ' + shortDate(it.capturedAt, true) : '');
-    var sub = [date, it.memo ? it.memo.slice(0, 24) : ''].filter(Boolean).join(' · ');
+    var sub = [date, it.card || '', it.memo ? it.memo.slice(0, 24) : ''].filter(Boolean).join(' · ');
     var badges = [];
     if (BADGE[it.st]) badges.push('<span class="bdg ' + BADGE[it.st][1] + '">' + BADGE[it.st][0] + '</span>');
     var tp = parts(it.txAt);

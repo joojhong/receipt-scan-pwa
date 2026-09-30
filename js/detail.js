@@ -12,6 +12,7 @@
     '8290000-사무용품비', '8510000-샘플비(견본비)', '8300000-소모품비', '8200000-수선비(A/S)', '8120002-숙박비(출장 외)', '8110002-식비',
     '8140002-우편료', '8120001-자차운행비(별도서류첨부)', '8220001-주유비(회사차량)', '8220003-주차/통행료', '8310000-지급수수료(수수료 비용)',
     '8220002-차량유지관리비(회사 차량)', '8240000-택배비', '8140001-휴대폰(통신비)'];
+  var CARDS = ['신한카드', '삼성카드', '현대카드', 'KB국민카드', '롯데카드', '하나카드', '우리카드', 'BC카드', 'NH농협카드', '현금'];
   var FUEL_ACCOUNT = '8220001-주유비(회사차량)';
   var CAR_KEY = 'rs.detail.car';
 
@@ -48,7 +49,8 @@
       merchant: r.merchant || '', address: r.address || '', desc: r.desc || '', memo: r.memo || '',
       month: r.month || '', widthMm: r.widthMm || 80, rot: r.rot || 0,
       guest: r.guest || '', topic: r.topic || '', account: r.account || '', fuel: r.fuel || '', work: r.work || '',
-      car: r.car || '', from: r.from || '', to: r.to || '', km: r.km || '', tripDate: r.tripDate || '', attendees: r.attendees || ''
+      car: r.car || '', from: r.from || '', to: r.to || '', km: r.km || '', tripDate: r.tripDate || '', attendees: r.attendees || '',
+      card: r.card || '', cardType: r.cardType || ''
     };
   }
 
@@ -96,6 +98,12 @@
     h += '<div class="dt-2">' + field('거래일', '<input type="date" data-k="date" max="' + today() + '" value="' + esc(v.date) + '"' + dis + '>', errs.date, true) +
       field('시각(선택)', '<input type="time" data-k="time" value="' + esc(v.time) + '"' + dis + '>') + '</div>';
     h += field('금액', '<div class="dt-won"><input type="text" inputmode="numeric" data-k="amount" value="' + esc(v.amount ? won(v.amount) : '') + '" placeholder="0"' + dis + '><span>원</span></div>', errs.amount, true);
+    // 카드사·카드 구분(시트 F·G열). 5단계부터는 AI가 채우고, 여기서 직접 고칠 수 있음
+    h += '<div class="dt-2">' + field('카드사', '<input type="text" data-k="card" list="dtCards" maxlength="20" placeholder="예: 신한카드, 현금" value="' + esc(v.card) + '"' + dis + '>' +
+        '<datalist id="dtCards">' + CARDS.map(function (c) { return '<option value="' + c + '">'; }).join('') + '</datalist>') +
+      field('카드 구분', '<div class="dt-seg dt-seg2">' + ['개인카드', '법인카드'].map(function (t) {
+        return '<button type="button" data-k="cardType" data-v="' + (v.cardType === t ? '' : t) + '"' + (v.cardType === t ? ' class="on"' : '') + dis + '>' + t.replace('카드', '') + '</button>';
+      }).join('') + '</div>') + '</div>';
     h += extraFields(v, dis, errs);
     h += field('가맹점명', '<input type="text" data-k="merchant" maxlength="60" value="' + esc(v.merchant) + '"' + dis + '>');
     h += field('가맹점 주소', '<input type="text" data-k="address" maxlength="100" value="' + esc(v.address) + '"' + dis + '>');
@@ -177,7 +185,7 @@
   }
 
   var KEYS = ['category', 'date', 'time', 'amount', 'merchant', 'address', 'desc', 'memo', 'month', 'widthMm', 'rot',
-    'guest', 'topic', 'account', 'fuel', 'work', 'car', 'from', 'to', 'km', 'tripDate', 'attendees'];
+    'guest', 'topic', 'account', 'fuel', 'work', 'car', 'from', 'to', 'km', 'tripDate', 'attendees', 'card', 'cardType'];
   function changedKeys() {
     return KEYS.filter(function (k) {
       if (k === 'car' && D.base.carDefault !== undefined && D.v.car === D.base.carDefault && !D.orig.car) return false; // 채워 둔 기본값만으로는 "바뀜" 아님

@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '0.9.1';
+  var APP_VERSION = '0.9.2';
   var CATEGORIES = ['경비', '접대비', '회의비', '출장비'];
   var CACHE_KEY = 'rs.cache.receipts';
 
@@ -488,7 +488,7 @@
   // 영수증 값 고치기: 바뀐 칸만 씀. orig = 화면을 열 때의 값. 그사이 PC에서 같은 칸이 바뀌었으면 PC 값을 남김
   var FIELD_LABEL = { category: '구분', txAt: '거래일시', amount: '금액', merchant: '가맹점명', address: '가맹점 주소', desc: '내역', memo: '메모',
     month: '귀속 월', widthMm: '영수증 폭', rot: '회전', guest: '접대상대방', topic: '회의 내용', account: '계정', fuel: '주유량', work: '업무내용',
-    car: '업무용 차량', from: '출발지', to: '도착지', km: '운행거리', tripDate: '출장일', attendees: '참석자', status: '상태', reason: '확인 사유', pdfId: '청구 PDF', claimedAt: '청구일시' };
+    car: '업무용 차량', from: '출발지', to: '도착지', km: '운행거리', tripDate: '출장일', attendees: '참석자', card: '카드사', cardType: '카드 구분', status: '상태', reason: '확인 사유', pdfId: '청구 PDF', claimedAt: '청구일시' };
   function cmpVal(r, k) {
     if (k === 'amount') return r.hasAmount ? String(r.amount) : '';
     if (k === 'rot') return String((r.rot || 0) * 90);
