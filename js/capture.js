@@ -14,13 +14,18 @@
     var p = {};
     try { p = JSON.parse(localStorage.getItem(PREF_KEY) || '{}') || {}; } catch (e) { p = {}; }
     return {
-      category: CATEGORIES.indexOf(p.category) >= 0 ? p.category : '경비',
+      category: '',                                  // 구분은 매번 새로 고름(미리 골라 두지 않음)
+      saved: !!p.cardType,                           // 결제·폭을 한 번이라도 골랐는지
       cardType: CARD_TYPES.indexOf(p.cardType) >= 0 ? p.cardType : '카드(개인)',
       widthMm: Number(p.widthMm) > 0 ? Number(p.widthMm) : 80,
       mode: p.mode === 'color' ? 'color' : 'gray'
     };
   }
-  function savePrefs(p) { try { localStorage.setItem(PREF_KEY, JSON.stringify(p)); } catch (e) { /* 무시 */ } }
+  function savePrefs(p) {
+    try { localStorage.setItem(PREF_KEY, JSON.stringify({ cardType: p.cardType, widthMm: p.widthMm, mode: p.mode })); } catch (e) { /* 무시 */ }
+  }
+  var PAY_LABEL = { '카드(개인)': '개인 카드', '카드(법인)': '법인 카드', '현금': '현금' };
+  function widthLabel(w) { return w === 80 ? '보통(80mm)' : w === 58 ? '좁은 것(58mm)' : '기타(' + w + 'mm)'; }
 
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function uuid() {
@@ -52,7 +57,7 @@
 
   function fresh() {
     return {
-      el: null, prefs: loadPrefs(), step: 'select', files: [], fileIndex: 0, saved: 0,
+      el: null, prefs: loadPrefs(), step: 'select', sheet: false, upInfo: '', files: [], fileIndex: 0, saved: 0,
       work: null, corners: null, warped: null, rot: 0, memo: '', busy: '', error: '', drag: -1, warpFailed: false
     };
   }
@@ -60,7 +65,11 @@
   // ── 그리기 ──
   function mount(root, c) {
     ctx = c;
-    if (!S) { S = fresh(); S.el = document.createElement('div'); S.el.className = 'cap'; draw(); }
+    if (!S) {
+      S = fresh(); S.el = document.createElement('div'); S.el.className = 'cap';
+      if (c.category && CATEGORIES.indexOf(c.category) >= 0) S.prefs.category = c.category;
+      draw(); refreshUpInfo();
+    }
     root.appendChild(S.el);
     if (S.step === 'adjust') requestAnimationFrame(layoutAdjust);
     if (S.step === 'preview') requestAnimationFrame(drawPreview);
@@ -79,29 +88,34 @@
 
   function summary() {
     var p = S.prefs;
-    return '<div class="cap-sum">' + esc(p.category) + ' · ' + esc(p.cardType) + ' · 폭 ' + p.widthMm + 'mm</div>';
+    return '<div class="cap-sum">' + esc(p.category) + ' · ' + esc(PAY_LABEL[p.cardType] || p.cardType) + ' · ' + esc(widthLabel(p.widthMm)) + '</div>';
   }
 
   function draw() {
     var p = S.prefs, h = '';
     if (S.step === 'select') {
-      var other = WIDTHS.indexOf(p.widthMm) < 0;
+      var ready = !!p.category && !S.busy;
+      var tiles = CATEGORIES.map(function (c) {
+        return '<button type="button" class="tile' + (p.category === c ? ' on' : '') + '" data-cat="' + esc(c) + '">' + esc(c) + '</button>';
+      }).join('');
       h = header('영수증 촬영', S.saved ? '이번에 ' + S.saved + '장 저장' : '') +
-        '<div class="cap-body">' +
-          '<div class="cap-label">구분</div><div class="chips">' + chips('category', CATEGORIES, p.category) + '</div>' +
-          '<div class="cap-label">카드 구분</div><div class="chips">' + chips('cardType', CARD_TYPES, p.cardType) + '</div>' +
-          '<div class="cap-label">영수증 폭</div><div class="chips">' + chips('width', WIDTHS.concat(['other']), other ? 'other' : p.widthMm, function (v) { return v === 'other' ? '기타' : v + 'mm'; }) + '</div>' +
-          (other ? '<div class="cap-other"><input id="widthInput" type="number" inputmode="numeric" min="20" max="300" value="' + p.widthMm + '"> mm</div>' : '') +
-          '<p class="cap-tip">영수증을 어두운 바탕에 놓고 찍으면 테두리가 잘 보입니다.</p>' +
-          (S.error ? '<p class="err" role="alert">' + esc(S.error) + '</p>' : '') +
-          (S.busy ? '<p class="cap-busy">' + esc(S.busy) + '</p>' : '') +
-        '</div>' +
-        '<div class="cap-actions">' +
-          '<label class="cta' + (S.busy ? ' disabled' : '') + '" for="camInput">' + ICON.camera + '촬영</label>' +
-          '<label class="btn-alt' + (S.busy ? ' disabled' : '') + '" for="libInput">' + ICON.gallery + '갤러리</label>' +
-        '</div>' +
+        '<div class="cap-q">어떤 비용인가요?</div>' +
+        '<div class="tiles">' + tiles + '</div>' +
+        '<div class="pay' + (p.saved ? '' : ' first') + '"><div class="pay-t"><small>결제 · 영수증 폭</small>' +
+          esc(PAY_LABEL[p.cardType] || p.cardType) + ' · ' + esc(widthLabel(p.widthMm)) +
+          (p.saved ? '' : '<em>처음이면 한 번 확인해 주세요</em>') + '</div>' +
+          '<button class="chg" id="payBtn" type="button">바꾸기</button></div>' +
+        (S.error ? '<p class="err" role="alert">' + esc(S.error) + '</p>' : '') +
+        (ready ? '<label class="big-cta" for="camInput">' + ICON.camera + '촬영</label>'
+               : '<button class="big-cta off" id="camOff" type="button">' + ICON.camera + (S.busy ? esc(S.busy) : '촬영') + '</button>') +
+        (ready ? '<label class="gal-btn" for="libInput">갤러리에서 고르기</label>'
+               : '<button class="gal-btn off" id="libOff" type="button">갤러리에서 고르기</button>') +
+        (p.category ? '' : '<p class="cap-need">먼저 위에서 비용 구분을 골라 주세요.</p>') +
+        (S.upInfo ? '<p class="cap-up">' + esc(S.upInfo) + '</p>' : '') +
+        '<p class="cap-tip">영수증 윗부분이 화면 위쪽으로 오게, 어두운 바탕에 놓고 찍으면 잘 나옵니다.</p>' +
         '<input id="camInput" type="file" accept="image/*" capture="environment" hidden>' +
-        '<input id="libInput" type="file" accept="image/*" multiple hidden>';
+        '<input id="libInput" type="file" accept="image/*" multiple hidden>' +
+        (S.sheet ? paySheet() : '');
     } else if (S.step === 'adjust') {
       h = header('모서리 맞추기', S.files.length > 1 ? (S.fileIndex + 1) + ' / ' + S.files.length : '') +
         '<div class="cap-stage" id="stage"><canvas id="adjCanvas"></canvas><canvas id="loupe" class="loupe" width="240" height="240" hidden></canvas></div>' +
@@ -138,6 +152,39 @@
     if (S.step === 'preview') requestAnimationFrame(drawPreview);
   }
 
+  function paySheet() {
+    var p = S.prefs, other = WIDTHS.indexOf(p.widthMm) < 0;
+    var pays = CARD_TYPES.map(function (v) {
+      return '<button type="button" class="' + (p.cardType === v ? 'on' : '') + '" data-pay="' + esc(v) + '">' + esc(PAY_LABEL[v]) + '</button>';
+    }).join('');
+    var w = function (mm, name, bar) {
+      return '<button type="button" class="wc' + (p.widthMm === mm ? ' on' : '') + '" data-w="' + mm + '"><i style="width:' + bar + 'px"></i><span><b>' + name + '</b><small>' + mm + 'mm</small></span></button>';
+    };
+    return '<div class="sheet-backdrop" id="payBack"><div class="sheet pay-sheet" role="dialog" aria-label="결제와 영수증 폭">' +
+      '<div class="grab"></div>' +
+      '<div class="cap-q">무엇으로 결제했나요?</div><div class="seg3">' + pays + '</div>' +
+      '<div class="cap-q">영수증 폭</div>' +
+      '<div class="wrow">' + w(80, '보통', 22) + w(58, '좁은 것', 15) +
+        '<button type="button" class="wc o' + (other ? ' on' : '') + '" data-w="other">기타</button></div>' +
+      (other ? '<div class="cap-other"><input id="widthInput" type="number" inputmode="numeric" min="20" max="300" value="' + p.widthMm + '"> mm</div>' : '') +
+      '<p class="hint">고른 값은 다음 촬영 때도 그대로 남습니다.</p>' +
+      '<div class="cap-actions one"><button class="cta" id="payOk" type="button">확인</button></div>' +
+      '</div></div>';
+  }
+
+  // 업로드 상태 한 줄(촬영 화면 아래)
+  function refreshUpInfo() {
+    if (!S || !ctx) return;
+    RSQueue.pending(ctx.email).then(function (list) {
+      if (!S) return;
+      var t = !list.length ? (S.saved ? '찍은 영수증을 모두 Drive에 올렸습니다.' : '') :
+        RSQueue.busy() ? 'Drive에 올리는 중 ' + list.length + '건 · 앱을 닫지 말아 주세요' :
+        '업로드 대기 ' + list.length + '건 · 인터넷이 연결되면 올립니다';
+      if (t !== S.upInfo) { S.upInfo = t; if (S.step === 'select') draw(); }
+    }).catch(function () {});
+  }
+  RSQueue.onChange(refreshUpInfo);
+
   function $(id) { return S.el.querySelector('#' + id); }
 
   function bind() {
@@ -151,6 +198,29 @@
         savePrefs(S.prefs); draw();
       };
     });
+    S.el.querySelectorAll('[data-cat]').forEach(function (b) {
+      b.onclick = function () { S.prefs.category = b.dataset.cat; S.error = ''; draw(); };
+    });
+    var pb = $('payBtn');
+    if (pb) pb.onclick = function () { S.sheet = true; draw(); };
+    ['camOff', 'libOff'].forEach(function (id) {
+      var b = $(id);
+      if (b) b.onclick = function () { if (!S.busy) ctx.toast('먼저 비용 구분을 골라 주세요'); };
+    });
+    var back = $('payBack');
+    if (back) back.onclick = function (e) { if (e.target === back) closeSheet(); };
+    S.el.querySelectorAll('[data-pay]').forEach(function (b) {
+      b.onclick = function () { S.prefs.cardType = b.dataset.pay; draw(); };
+    });
+    S.el.querySelectorAll('[data-w]').forEach(function (b) {
+      b.onclick = function () {
+        var v = b.dataset.w;
+        S.prefs.widthMm = v === 'other' ? (WIDTHS.indexOf(S.prefs.widthMm) < 0 ? S.prefs.widthMm : 100) : Number(v);
+        draw();
+      };
+    });
+    var ok = $('payOk');
+    if (ok) ok.onclick = closeSheet;
     var wi = $('widthInput');
     if (wi) wi.onchange = function () {
       var n = Math.round(Number(wi.value));
@@ -182,6 +252,16 @@
     if (sm) sm.onclick = function () { save(false); };
     var sd = $('saveDone');
     if (sd) sd.onclick = function () { save(true); };
+  }
+
+  function closeSheet() {
+    var wi = $('widthInput');
+    if (wi) {
+      var n = Math.round(Number(wi.value));
+      if (!(n >= 20 && n <= 300)) { ctx.toast('폭은 20~300mm로 적어 주세요'); return; }
+      S.prefs.widthMm = n;
+    }
+    S.prefs.saved = true; savePrefs(S.prefs); S.sheet = false; draw();
   }
 
   function close() {
@@ -336,8 +416,8 @@
     } catch (e) {
       S.warped = S.work; S.warpFailed = true;
     }
-    // 가로로 긴 결과는 90° 돌려 세움(영수증은 보통 세로로 긺). 방향이 틀리면 [회전]
-    S.rot = S.warped.width > S.warped.height ? 1 : 0;
+    // 글자 줄이 세로로 서 있으면(옆으로 찍힌 영수증) 90° 돌려 세움. 위아래가 바뀌면 [회전]
+    S.rot = RSImaging.textSideways(S.warped) ? 1 : 0;
     S.busy = ''; S.step = 'preview'; draw();
   }
 

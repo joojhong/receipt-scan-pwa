@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '0.6.0';
+  var APP_VERSION = '0.6.1';
   var CATEGORIES = ['경비', '접대비', '회의비', '출장비'];
   var CACHE_KEY = 'rs.cache.receipts';
 
@@ -203,8 +203,10 @@
     else if (state.error) banner = '<div class="banner warn" role="alert">' + esc(state.error) + '</div>';
     else if (state.offline) banner = '<div class="banner">오프라인입니다. 마지막으로 불러온 합계를 보여 줍니다.</div>';
     if (state.uploadWaiting) {
-      banner += '<button class="banner up" id="upBtn" type="button">업로드 대기 ' + state.uploadWaiting + '건' +
-        (RSQueue.busy() ? ' · 올리는 중…' : (state.uploadError ? ' · 누르면 다시 시도' : '')) + '</button>';
+      banner += RSQueue.busy()
+        ? '<div class="banner up">Drive에 올리는 중 ' + state.uploadWaiting + '건 · 앱을 닫지 말아 주세요</div>'
+        : '<button class="banner up" id="upBtn" type="button">업로드 대기 ' + state.uploadWaiting + '건' +
+          (!navigator.onLine ? ' · 인터넷이 연결되면 올립니다' : ' · 누르면 다시 시도') + '</button>';
     }
 
     root.appendChild(el(
@@ -393,6 +395,7 @@
   function kickQueue() {
     if (!state.user || !state.ws || !navigator.onLine) { updateWaiting(); return; }
     RSQueue.process(state.ws, state.user.email).then(function (changed) {
+      if (changed) toast('Drive에 올렸습니다' + (changed > 1 ? ' (' + changed + '장)' : ''));
       // 새 줄이 시트에 들어갔으면 합계를 다시 읽음(촬영 화면에 있는 동안은 돌아왔을 때)
       if (changed) { if (currentTab() === 'capture') state.needRefresh = true; else refresh(); }
     }).catch(function (e) {

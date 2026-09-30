@@ -76,6 +76,7 @@
   async function process(ws, email) {
     if (running) { again = true; return; }
     running = true;
+    emit();                 // 화면에 "올리는 중" 표시
     var changed = 0;
     try {
       do {
@@ -113,6 +114,7 @@
       } while (again);
     } finally {
       running = false;
+      emit();
     }
     return changed;
   }

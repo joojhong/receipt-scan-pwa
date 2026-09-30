@@ -186,7 +186,45 @@
     });
   }
 
+  // 글자 줄이 세로로 서 있는지(= 영수증이 옆으로 누운 채 찍혔는지) 판단
+  // 방법: 작게 줄여 어두운 점(글자)을 찾은 뒤, 가로줄·세로줄마다 글자 점 수를 셈.
+  //   글자 줄이 가로로 놓여 있으면 줄 사이 여백 때문에 "빈 가로줄"이 많고, 옆으로 누워 있으면 "빈 세로줄"이 많음.
+  //   차이가 뚜렷하지 않으면 모양(가로가 길면 돌림)으로 판단
+  function textSideways(src) {
+    var sm = scaled(src, 600), w = sm.width, h = sm.height;
+    var d = sm.getContext('2d').getImageData(0, 0, w, h).data;
+    var x0 = Math.round(w * 0.06), x1 = Math.round(w * 0.94), y0 = Math.round(h * 0.06), y1 = Math.round(h * 0.94);
+    var hist = new Uint32Array(256), n = 0, x, y, L;
+    for (y = y0; y < y1; y++) for (x = x0; x < x1; x++) { var i = (y * w + x) * 4; hist[(d[i] * 77 + d[i + 1] * 150 + d[i + 2] * 29) >> 8]++; n++; }
+    // 밝은 쪽(종이) 기준에서 충분히 어두운 점을 글자로 봄
+    var acc = 0, paper = 255;
+    for (L = 255; L >= 0; L--) { acc += hist[L]; if (acc > n * 0.5) { paper = L; break; } }
+    var thr = paper * 0.62;
+    var rows = new Float64Array(y1 - y0), cols = new Float64Array(x1 - x0), dark = 0;
+    for (y = y0; y < y1; y++) for (x = x0; x < x1; x++) {
+      var j = (y * w + x) * 4;
+      if (((d[j] * 77 + d[j + 1] * 150 + d[j + 2] * 29) >> 8) < thr) { rows[y - y0]++; cols[x - x0]++; dark++; }
+    }
+    if (dark < n * 0.003 || dark > n * 0.35) return w > h;   // 글자가 거의 없거나, 종이가 아닌 부분이 많음
+    // 글자 영역 안에서 "빈 줄"(글자 점이 거의 없는 줄)의 비율. 글자 줄 방향으로는 줄 사이 여백 때문에 빈 줄이 많음
+    function gaps(a) {
+      var max = 0, k, first = -1, last = -1;
+      for (k = 0; k < a.length; k++) if (a[k] > max) max = a[k];
+      var lim = max * 0.04;
+      for (k = 0; k < a.length; k++) if (a[k] > lim) { if (first < 0) first = k; last = k; }
+      if (last - first < 8) return 0;
+      var empty = 0;
+      for (k = first; k <= last; k++) if (a[k] <= lim) empty++;
+      return empty / (last - first + 1);
+    }
+    var rg = gaps(rows), cg = gaps(cols);
+    if (cg > rg + 0.08) return true;
+    if (rg > cg + 0.08) return false;
+    return w > h;
+  }
+
   window.RSImaging = {
+    textSideways: textSideways,
     open: open, warp: warp, enhance: enhance, rotate: rotate, scaled: scaled, jpeg: jpeg, order: order, canvas: canvas
   };
 })();
