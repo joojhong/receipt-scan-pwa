@@ -25,6 +25,7 @@
   function NotApproved(d) {
     var e = new Error(d.message || '관리자 승인이 필요합니다');
     e.notApproved = true; e.approvalStatus = d.status || 'pending'; e.email = d.email;
+    e.name = d.name || ''; e.googleName = d.googleName || '';
     return e;
   }
 
@@ -91,7 +92,7 @@
               if (e.notApproved) {
                 // 승인 전: refresh token만 기기에 보관해 두었다가 [다시 확인] 때 씀
                 var rt = e.refreshToken || (prev && prev.email === e.email ? prev.refreshToken : null);
-                save({ email: e.email, refreshToken: rt, approved: false });
+                save({ email: e.email, refreshToken: rt, approved: false, name: e.name });
               }
               throw e;
             }
@@ -101,7 +102,7 @@
               await relay('/v1/auth/revoke', { token: d.accessToken }).catch(function () {});
               return reject(new Error('로그인 정보를 새로 받아야 합니다. [Google로 로그인]을 한 번 더 눌러 주세요'));
             }
-            save({ email: d.email, refreshToken: refreshToken, approved: true });
+            save({ email: d.email, refreshToken: refreshToken, approved: true, name: d.name || '' });
             setAccess(d);
             resolve({ email: d.email });
           } catch (e) { reject(e); }
@@ -121,10 +122,10 @@
     if (!inflight) {
       // 승인 대기 중이어도 서버에 다시 물어봄(그 사이 승인됐을 수 있음)
       inflight = relay('/v1/auth/refresh', { refreshToken: s.refreshToken })
-        .then(function (d) { setAccess(d); s.approved = true; save(s); return access.token; })
+        .then(function (d) { setAccess(d); s.approved = true; if (d.name !== undefined) s.name = d.name; save(s); return access.token; })
         .catch(function (e) {
           if (e.status === 401) { save(null); access = null; throw NeedLogin('로그인이 만료되었습니다. 다시 로그인해 주세요'); }
-          if (e.notApproved) { access = null; s.approved = false; save(s); }
+          if (e.notApproved) { access = null; s.approved = false; s.name = e.name; save(s); }
           throw e;
         })
         .finally(function () { inflight = null; });
@@ -140,6 +141,15 @@
     if (s && s.refreshToken) await relay('/v1/auth/revoke', { token: s.refreshToken }).catch(function () {});
   }
 
+  // 내 표시 이름 저장(승인 대기 중에도 가능: refresh token으로 본인 확인)
+  async function setName(name) {
+    var s = load();
+    if (!s || !s.refreshToken) throw NeedLogin();
+    var d = await relay('/v1/profile/name', { refreshToken: s.refreshToken, name: name });
+    s.name = d.name; save(s);
+    return d.name;
+  }
+
   // 관리자 전용 서버 호출(본인 확인용 id token을 함께 보냄)
   async function admin(path, body) {
     await getToken();
@@ -153,8 +163,9 @@
     logout: logout,
     getToken: getToken,
     admin: admin,
+    setName: setName,
     isAdmin: function () { return info.isAdmin; },
-    user: function () { var s = load(); return s ? { email: s.email, approved: s.approved !== false } : null; },
+    user: function () { var s = load(); return s ? { email: s.email, approved: s.approved !== false, name: s.name || '' } : null; },
     invalidate: function () { access = null; }
   };
 })();

@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '0.5.0';
+  var APP_VERSION = '0.5.1';
   var CATEGORIES = ['경비', '접대비', '회의비', '출장비'];
   var CACHE_KEY = 'rs.cache.receipts';
 
@@ -14,6 +14,7 @@
   var state = {
     user: RSAuth.user(),   // { email, approved } 또는 null
     pending: null,         // 승인 대기: { status, message }
+    nameSaving: false,
     admin: { list: null, loading: false, error: '', waiting: 0 }, // 관리자 화면
     ws: null,              // 폴더·시트 ID
     receipts: loadCache(), // 시트에서 읽은 영수증 목록
@@ -90,8 +91,8 @@
       await refresh();
     } catch (e) {
       if (e.notApproved) {
-        state.user = { email: e.email, approved: false };
-        state.pending = { status: e.approvalStatus, message: e.message };
+        state.user = { email: e.email, approved: false, name: e.name || '' };
+        state.pending = { status: e.approvalStatus, message: e.message, googleName: e.googleName };
       } else {
         state.error = e.message || '로그인하지 못했습니다';
       }
@@ -108,11 +109,22 @@
   function renderPending(root) {
     var st = (state.pending && state.pending.status) || 'pending';
     var t = PENDING_TEXT[st] || PENDING_TEXT.pending;
+    var saved = state.user.name || '';
+    var nameBox = st === 'pending' ?
+      '<div class="namebox">' +
+        '<label for="nameInput">이름 <span>관리자가 누구인지 알아볼 수 있게 적어 주세요</span></label>' +
+        '<div class="namerow">' +
+          '<input id="nameInput" type="text" maxlength="30" autocomplete="name" placeholder="예: 홍길동 대리" value="' + esc(state.nameSaving ? state.nameDraft : (saved || (state.pending && state.pending.googleName) || '')) + '">' +
+          '<button class="mini ok" id="nameSave" type="button"' + (state.nameSaving ? ' disabled' : '') + '>' + (state.nameSaving ? '저장 중' : '저장') + '</button>' +
+        '</div>' +
+        '<div class="namestate' + (saved ? ' ok' : '') + '">' + (saved ? '관리자에게 보이는 이름: ' + esc(saved) : '아직 이름이 저장되지 않았습니다') + '</div>' +
+      '</div>' : '';
     root.appendChild(el(
       '<section class="welcome">' +
         '<img src="icons/icon-192.png" alt="" width="72" height="72">' +
         '<h1>' + esc(t[0]) + '</h1>' +
         '<p>' + esc(state.user.email) + '</p>' +
+        nameBox +
         '<p>' + esc(t[1]) + '</p>' +
         '<button class="google-btn" id="recheckBtn" type="button">다시 확인</button>' +
         (state.error ? '<p class="err" role="alert">' + esc(state.error) + '</p>' : '') +
@@ -125,6 +137,23 @@
       refresh();
     };
     root.querySelector('#otherBtn').onclick = logout;
+    var ns = root.querySelector('#nameSave');
+    if (ns) ns.onclick = function () { saveName(root.querySelector('#nameInput').value); };
+  }
+
+  async function saveName(value) {
+    var v = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!v) { toast('이름을 적어 주세요'); return; }
+    state.nameSaving = true; state.nameDraft = v; state.error = ''; render();
+    try {
+      state.user.name = await RSAuth.setName(v);
+      toast('이름을 저장했습니다');
+    } catch (e) {
+      if (e.needLogin || e.status === 401) { state.error = '로그인이 만료되었습니다. [다른 계정으로 로그인]으로 다시 로그인해 주세요'; }
+      else toast(e.message || '저장하지 못했습니다');
+    } finally {
+      state.nameSaving = false; render();
+    }
   }
 
   async function logout() {
@@ -171,7 +200,7 @@
           '<h1>' + view.y + '년 ' + view.m + '월</h1>' +
           '<button class="icon-btn" id="nextMonth" aria-label="다음 달"' + (isCurrent(view) ? ' disabled' : '') + '>' + ICON.next + '</button>' +
         '</div>' +
-        '<button class="avatar" id="avatar" aria-label="계정 메뉴">' + esc(state.user.email.charAt(0).toUpperCase()) + '</button>' +
+        '<button class="avatar" id="avatar" aria-label="계정 메뉴">' + esc((state.user.name || state.user.email).charAt(0).toUpperCase()) + '</button>' +
       '</header>' +
       (RSAuth.isAdmin() && state.admin.waiting ? '<a class="banner" href="#/admin">승인을 기다리는 사용자가 ' + state.admin.waiting + '명 있습니다 ›</a>' : '') +
       banner +
@@ -206,7 +235,8 @@
     wrap.innerHTML =
       '<div class="sheet" role="dialog" aria-label="계정">' +
         '<div class="grab"></div>' +
-        '<div class="sheet-email">' + esc(state.user.email) + '</div>' +
+        '<div class="sheet-email">' + (state.user.name ? '<b>' + esc(state.user.name) + '</b><br>' : '') + esc(state.user.email) + '</div>' +
+        '<button class="sheet-item" id="nameBtn" type="button">이름 바꾸기</button>' +
         (ws ? '<a class="sheet-item" href="' + RSStore.sheetUrl(ws) + '" target="_blank" rel="noopener">영수증 장부(시트) 열기</a>' +
               '<a class="sheet-item" href="' + RSStore.folderUrl(ws) + '" target="_blank" rel="noopener">Drive 폴더 열기</a>' : '') +
         (RSAuth.isAdmin() ? '<a class="sheet-item" href="#/admin" id="adminLink">사용자 승인' + (state.admin.waiting ? ' (' + state.admin.waiting + ')' : '') + '</a>' : '') +
@@ -216,6 +246,11 @@
       '</div>';
     wrap.onclick = function (e) { if (e.target === wrap) wrap.remove(); };
     document.body.appendChild(wrap);
+    wrap.querySelector('#nameBtn').onclick = function () {
+      wrap.remove();
+      var v = prompt('관리자 화면에 보일 이름 (예: 홍길동 대리)', state.user.name || '');
+      if (v !== null) saveName(v);
+    };
     wrap.querySelector('#reloadBtn').onclick = function () { wrap.remove(); refresh(); };
     var al = wrap.querySelector('#adminLink');
     if (al) al.onclick = function () { wrap.remove(); };
@@ -230,6 +265,7 @@
       // 로그인 확인(승인 여부 포함)을 먼저 하고, 관리자면 승인 목록은 시트와 별개로 불러옴
       await RSAuth.getToken();
       state.authChecked = true;
+      state.user.name = (RSAuth.user() || {}).name || '';
       if (RSAuth.isAdmin()) loadAdmin(true);
       state.ws = await RSStore.ensureWorkspace(state.user.email, function (msg) { state.step = msg; render(); });
       state.step = '';
@@ -239,7 +275,8 @@
     } catch (e) {
       state.step = ''; state.authChecked = true;
       if (e.notApproved) {
-        state.pending = { status: e.approvalStatus, message: e.message };
+        state.pending = { status: e.approvalStatus, message: e.message, googleName: e.googleName };
+        state.user.name = e.name || '';
       } else if (e.needLogin) {
         state.user = null;
         state.error = e.message;
@@ -278,8 +315,8 @@
       state.admin.loading = false; render();
     }
   }
-  async function setStatus(email, status, label) {
-    if (!confirm(email + '\n' + label + ' 처리할까요?')) return;
+  async function setStatus(email, status, label, name) {
+    if (!confirm((name ? name + ' (' + email + ')' : email) + '\n' + label + ' 처리할까요?')) return;
     try {
       await RSAuth.admin('/v1/admin/users/status', { email: email, status: status });
       toast(label + ' 처리했습니다');
@@ -302,14 +339,16 @@
     var rows = (a.list || []).map(function (u) {
       var btns = '';
       if (!u.isAdmin) {
-        if (u.status === 'pending') btns = '<button class="mini ok" data-e="' + esc(u.email) + '" data-s="approved" data-l="승인">승인</button><button class="mini" data-e="' + esc(u.email) + '" data-s="rejected" data-l="거절">거절</button>';
-        else if (u.status === 'approved') btns = '<button class="mini" data-e="' + esc(u.email) + '" data-s="disabled" data-l="사용 중지">사용 중지</button>';
-        else btns = '<button class="mini ok" data-e="' + esc(u.email) + '" data-s="approved" data-l="승인">승인</button>';
+        if (u.status === 'pending') btns = '<button class="mini ok" data-e="' + esc(u.email) + '" data-n="' + esc(u.name || '') + '" data-s="approved" data-l="승인">승인</button><button class="mini" data-e="' + esc(u.email) + '" data-n="' + esc(u.name || '') + '" data-s="rejected" data-l="거절">거절</button>';
+        else if (u.status === 'approved') btns = '<button class="mini" data-e="' + esc(u.email) + '" data-n="' + esc(u.name || '') + '" data-s="disabled" data-l="사용 중지">사용 중지</button>';
+        else btns = '<button class="mini ok" data-e="' + esc(u.email) + '" data-n="' + esc(u.name || '') + '" data-s="approved" data-l="승인">승인</button>';
       }
       return '<div class="urow">' +
-        '<div class="uinfo"><div class="uemail">' + esc(u.email) + (u.isAdmin ? ' <span class="tag">관리자</span>' : '') + '</div>' +
+        '<div class="uinfo"><div class="uname' + (u.name ? '' : ' none') + '">' + (u.name ? esc(u.name) : '이름 없음') + (u.isAdmin ? ' <span class="tag">관리자</span>' : '') + '</div>' +
+        '<div class="uemail">' + esc(u.email) + '</div>' +
+        (u.googleName && u.googleName !== u.name ? '<div class="umeta">Google 이름: ' + esc(u.googleName) + '</div>' : '') +
         '<div class="umeta"><span class="st st-' + u.status + '">' + (STATUS_LABEL[u.status] || u.status) + '</span>' +
-        (u.name ? ' · ' + esc(u.name) : '') + (u.requestedAt ? ' · 신청 ' + fmtDate(u.requestedAt) : '') + '</div></div>' +
+        (u.requestedAt ? ' · 신청 ' + fmtDate(u.requestedAt) : '') + '</div></div>' +
         '<div class="ubtns">' + btns + '</div></div>';
     }).join('');
     root.appendChild(el(
@@ -319,7 +358,7 @@
       '<p class="hint">직원이 앱에서 Google로 로그인하면 여기에 "승인 대기"로 나타납니다.</p>'
     ));
     root.querySelectorAll('button.mini').forEach(function (b) {
-      b.onclick = function () { setStatus(b.dataset.e, b.dataset.s, b.dataset.l); };
+      b.onclick = function () { setStatus(b.dataset.e, b.dataset.s, b.dataset.l, b.dataset.n); };
     });
   }
 
