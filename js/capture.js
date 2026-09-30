@@ -18,11 +18,12 @@
       saved: !!p.cardType,                           // 결제·폭을 한 번이라도 골랐는지
       cardType: CARD_TYPES.indexOf(p.cardType) >= 0 ? p.cardType : '카드(개인)',
       widthMm: Number(p.widthMm) > 0 ? Number(p.widthMm) : 80,
-      mode: p.mode === 'color' ? 'color' : 'gray'
+      // 기본값 = 스캔 컬러(빨간 도장·색 글씨가 남도록). 예전 기본값 흑백이 저장된 경우도 한 번 컬러로 바꿈
+      mode: p.md === 2 ? (p.mode === 'gray' ? 'gray' : 'color') : 'color'
     };
   }
   function savePrefs(p) {
-    try { localStorage.setItem(PREF_KEY, JSON.stringify({ cardType: p.cardType, widthMm: p.widthMm, mode: p.mode === 'orig' ? 'gray' : p.mode })); } catch (e) { /* 무시 */ }
+    try { localStorage.setItem(PREF_KEY, JSON.stringify({ cardType: p.cardType, widthMm: p.widthMm, mode: p.mode === 'orig' ? 'color' : p.mode, md: 2 })); } catch (e) { /* 무시 */ }
   }
   var PAY_LABEL = { '카드(개인)': '개인 카드', '카드(법인)': '법인 카드', '현금': '현금' };
   function widthLabel(w) { return w === 80 ? '보통(80mm)' : w === 58 ? '좁은 것(58mm)' : '기타(' + w + 'mm)'; }
@@ -112,7 +113,9 @@
                : '<button class="gal-btn off" id="libOff" type="button">갤러리에서 고르기</button>') +
         (p.category ? '' : '<p class="cap-need">먼저 위에서 비용 구분을 골라 주세요.</p>') +
         (S.upInfo ? '<p class="cap-up">' + esc(S.upInfo) + '</p>' : '') +
-        '<p class="cap-tip">영수증 윗부분이 화면 위쪽으로 오게, 어두운 바탕에 놓고 찍으면 잘 나옵니다.</p>' +
+        '<ul class="cap-tips"><li><b>영수증을 손으로 펴고</b> 찍어 주세요. 구겨진 모양은 보정으로 펴지지 않습니다.</li>' +
+          '<li>영수증 윗부분이 화면 위쪽으로 오게 찍어 주세요.</li>' +
+          '<li>어두운 바탕에 놓으면 테두리가 잘 보입니다.</li></ul>' +
         '<input id="camInput" type="file" accept="image/*" capture="environment" hidden>' +
         '<input id="libInput" type="file" accept="image/*" multiple hidden>' +
         (S.sheet ? paySheet() : '');
@@ -133,8 +136,8 @@
         (S.warpFailed ? '<p class="err">보정하지 못해 원본 그대로 보여 줍니다. 이대로 저장하거나 다시 찍어 주세요.</p>' : '') +
         '<div class="cap-tools">' +
           '<div class="seg">' +
-            '<button type="button" class="' + (p.mode === 'gray' ? 'on' : '') + '" data-mode="gray">흑백</button>' +
             '<button type="button" class="' + (p.mode === 'color' ? 'on' : '') + '" data-mode="color">컬러</button>' +
+            '<button type="button" class="' + (p.mode === 'gray' ? 'on' : '') + '" data-mode="gray">흑백</button>' +
             '<button type="button" class="' + (p.mode === 'orig' ? 'on' : '') + '" data-mode="orig">원본</button>' +
           '</div>' +
           '<button class="btn-alt small" id="rotBtn" type="button">' + ICON.rotate + '회전</button>' +
