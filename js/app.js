@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '0.5.3';
+  var APP_VERSION = '0.6.0';
   var CATEGORIES = ['경비', '접대비', '회의비', '출장비'];
   var CACHE_KEY = 'rs.cache.receipts';
 
@@ -15,6 +15,8 @@
     user: RSAuth.user(),   // { email, approved } 또는 null
     pending: null,         // 승인 대기: { status, message }
     nameSaving: false,
+    uploadWaiting: 0,      // 폰에 저장됐지만 아직 Drive·시트에 못 올린 건수
+    uploadError: '',
     admin: { list: null, loading: false, error: '', waiting: 0 }, // 관리자 화면
     ws: null,              // 폴더·시트 ID
     receipts: loadCache(), // 시트에서 읽은 영수증 목록
@@ -165,6 +167,7 @@
 
   async function logout() {
     await RSAuth.logout();
+    RSCapture.reset();
     state.user = null; state.ws = null; state.receipts = []; state.error = ''; state.pending = null;
     state.admin = { list: null, loading: false, error: '', waiting: 0 };
     saveCache([]);
@@ -199,6 +202,10 @@
     if (state.step) banner = '<div class="banner">' + esc(state.step) + '</div>';
     else if (state.error) banner = '<div class="banner warn" role="alert">' + esc(state.error) + '</div>';
     else if (state.offline) banner = '<div class="banner">오프라인입니다. 마지막으로 불러온 합계를 보여 줍니다.</div>';
+    if (state.uploadWaiting) {
+      banner += '<button class="banner up" id="upBtn" type="button">업로드 대기 ' + state.uploadWaiting + '건' +
+        (RSQueue.busy() ? ' · 올리는 중…' : (state.uploadError ? ' · 누르면 다시 시도' : '')) + '</button>';
+    }
 
     root.appendChild(el(
       '<header class="topbar">' +
@@ -229,8 +236,9 @@
     root.querySelector('#nextMonth').onclick = function () {
       if (!isCurrent(view)) { view = shift(view, 1); render(); }
     };
-    // 3단계 초반: 실기기 검증용 카메라 시험 화면으로 연결(촬영 화면 완성 후 교체)
-    root.querySelector('#capture').onclick = function () { location.href = 'camtest.html'; };
+    root.querySelector('#capture').onclick = function () { location.hash = '#/capture'; };
+    var ub = root.querySelector('#upBtn');
+    if (ub) ub.onclick = function () { if (state.ws) kickQueue(); else refresh(); };
     root.querySelector('#avatar').onclick = openAccountSheet;
   }
 
@@ -279,6 +287,7 @@
       state.receipts = await RSStore.readReceipts(state.ws);
       state.offline = false;
       saveCache(state.receipts);
+      kickQueue();
     } catch (e) {
       state.step = ''; state.authChecked = true;
       if (e.notApproved) {
@@ -369,7 +378,44 @@
     });
   }
 
+  // ── 업로드 대기열 ──
+  function updateWaiting() {
+    if (!state.user) return;
+    RSQueue.pending(state.user.email).then(function (list) {
+      state.uploadWaiting = list.length;
+      var last = list.filter(function (x) { return x.error; })[0];
+      state.uploadError = last ? last.error : '';
+      if (currentTab() === 'home') render();
+    }).catch(function () {});
+  }
+  RSQueue.onChange(updateWaiting);
+
+  function kickQueue() {
+    if (!state.user || !state.ws || !navigator.onLine) { updateWaiting(); return; }
+    RSQueue.process(state.ws, state.user.email).then(function (changed) {
+      // 새 줄이 시트에 들어갔으면 합계를 다시 읽음(촬영 화면에 있는 동안은 돌아왔을 때)
+      if (changed) { if (currentTab() === 'capture') state.needRefresh = true; else refresh(); }
+    }).catch(function (e) {
+      if (e && e.notApproved) state.pending = { status: e.approvalStatus, message: e.message, googleName: e.googleName };
+      updateWaiting();
+    });
+  }
+
+  function renderCapture(root) {
+    RSCapture.mount(root, {
+      email: state.user.email,
+      toast: toast,
+      onSaved: function () { updateWaiting(); kickQueue(); },
+      onClose: function (n) {
+        location.hash = '#/home';
+        if (n) toast(n + '장 저장했습니다');
+        if (state.needRefresh) { state.needRefresh = false; refresh(); }
+      }
+    });
+  }
+
   var ROUTES = {
+    capture: renderCapture,
     admin: renderAdmin,
     home: renderHome,
     box: function (r) { renderPlaceholder(r, '보관함', '촬영한 영수증이 여기에 모입니다.<br>다음 단계에서 만듭니다.'); },
@@ -387,7 +433,7 @@
     root.innerHTML = '';
     ROUTES[tab](root);
     var nav = document.querySelector('.tabbar');
-    nav.hidden = !state.user || !!state.pending || tab === 'admin';
+    nav.hidden = !state.user || !!state.pending || tab === 'admin' || tab === 'capture';
     document.querySelectorAll('.tabbar a').forEach(function (a) {
       if (a.dataset.tab === tab) a.setAttribute('aria-current', 'page');
       else a.removeAttribute('aria-current');
@@ -412,6 +458,7 @@
   window.addEventListener('online', function () { refresh(); });
 
   if (state.user && state.user.approved === false) state.pending = { status: 'pending' };
+  if (state.user) updateWaiting();
   render();
   if (state.user) { lastRefresh = Date.now(); if (!state.pending) refresh(); }
 
