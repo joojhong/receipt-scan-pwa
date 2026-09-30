@@ -99,8 +99,9 @@
     h += extraFields(v, dis, errs);
     h += field('가맹점명', '<input type="text" data-k="merchant" maxlength="60" value="' + esc(v.merchant) + '"' + dis + '>');
     h += field('가맹점 주소', '<input type="text" data-k="address" maxlength="100" value="' + esc(v.address) + '"' + dis + '>');
-    h += field('귀속 월', '<input type="month" data-k="month" value="' + esc(v.month) + '"' + dis + '>', errs.month, false,
-      D.monthFollows ? '거래일을 바꾸면 따라 바뀝니다' : '');
+    // 귀속 월은 거래일(카드 사용일)의 달로 자동 고정(재홍 님 결정). 앱에서는 보여 주기만 함
+    h += field('귀속 월', '<div class="dt-ro">' + (v.month ? esc(Number(v.month.slice(0, 4))) + '년 ' + esc(Number(v.month.slice(5, 7))) + '월' : '—') + '</div>', '', false,
+      '거래일(카드 사용일) 기준으로 자동으로 정해집니다');
     h += field('내역', '<input type="text" data-k="desc" maxlength="100" value="' + esc(v.desc) + '"' + dis + '>');
     h += field('메모', '<input type="text" data-k="memo" maxlength="100" value="' + esc(v.memo) + '"' + dis + '>');
     var other = [80, 58].indexOf(Number(v.widthMm)) < 0;
@@ -136,7 +137,7 @@
   // 구분별 추가 입력(필수 = 청구(PDF 만들기) 전에 채워야 함)
   function extraFields(v, dis, errs) {
     var h = '';
-    var reqTag = function (t) { return t + ' <em class="soft">청구 전 필수</em>'; };
+    var reqTag = function (t) { return t + ' <span class="opt">(선택)</span>'; }; // 모두 선택 입력(시트에서 적어도 됨)
     if (v.category === '접대비') h += field(reqTag('접대상대방'), '<input type="text" data-k="guest" maxlength="60" placeholder="예: ○○상사 김부장" value="' + esc(v.guest) + '"' + dis + '>');
     if (v.category === '회의비') {
       h += field(reqTag('회의 내용'), '<input type="text" data-k="topic" maxlength="100" placeholder="예: 3분기 영업 회의" value="' + esc(v.topic) + '"' + dis + '>');
@@ -211,7 +212,7 @@
           D.v.widthMm = val === '' ? '' : Number(val);
         } else if (k === 'date') {
           D.v.date = val;
-          if (D.monthFollows && val) D.v.month = val.slice(0, 7);
+          if (val) D.v.month = val.slice(0, 7);
         } else if (k === 'month') {
           D.v.month = val; D.monthFollows = false;
         } else {

@@ -220,7 +220,7 @@
       '<div class="bx-main"><div class="bx-t">' + esc(title) + '</div>' +
         '<div class="bx-s">' + esc(sub) + '</div>' +
         (badges.length ? '<div class="bx-b">' + badges.join('') + '</div>' : '') + '</div>' +
-      '<div class="bx-amt">' + (it.hasAmount ? won(it.amount) + '<small>원</small>' : '—') + '</div>' +
+      '<div class="bx-amt">' + (it.hasAmount ? won(it.amount) + '<small>원</small>' : '<span class="bx-noamt">' + (it.st === 'upload' || it.st === '판독대기' ? '금액<br>판독 전' : '금액<br>미입력') + '</span>') + '</div>' +
     '</div>';
   }
 
@@ -319,7 +319,7 @@
 
   // ── 왼쪽으로 밀어 제외 · 길게 눌러 빠른 메뉴 ──
   function gestures(r, it) {
-    var sx = 0, sy = 0, dx = 0, timer = null, moved = false, swiping = false;
+    var sx = 0, sy = 0, dx = 0, timer = null, moved = false, swiping = false, bg = null;
     var canSwipe = KEEP[it.st] && it.st !== 'upload' && B.tab === 'keep';
     r.addEventListener('touchstart', function (e) {
       var t = e.touches[0]; sx = t.clientX; sy = t.clientY; dx = 0; moved = false; swiping = false;
@@ -330,18 +330,29 @@
       if (Math.abs(mx) > 8 || Math.abs(my) > 8) { moved = true; if (timer) { clearTimeout(timer); timer = null; } }
       if (!canSwipe) return;
       if (!swiping && Math.abs(mx) > 14 && Math.abs(mx) > Math.abs(my) * 1.5 && mx < 0) swiping = true;
-      if (swiping) { dx = Math.min(0, mx); r.style.transform = 'translateX(' + dx + 'px)'; r.classList.toggle('swipe-go', dx < -90); }
+      if (swiping) {
+        if (!bg) {
+          bg = document.createElement('div'); bg.className = 'bx-swbg';
+          bg.innerHTML = '<span>' + TRASH + '제외</span>';
+          bg.style.top = r.offsetTop + 'px'; bg.style.height = r.offsetHeight + 'px';
+          r.parentNode.insertBefore(bg, r);
+        }
+        dx = Math.min(0, mx); r.style.transform = 'translateX(' + dx + 'px)';
+        bg.classList.toggle('go', dx < -90);
+      }
     }, { passive: true });
     r.addEventListener('touchend', function () {
       if (timer) { clearTimeout(timer); timer = null; }
       if (swiping) {
         r.dataset.swiped = '1';
         if (dx < -90) { r.style.transform = 'translateX(-100%)'; ctx.statusAction('exclude', it); }
-        else { r.style.transform = ''; r.classList.remove('swipe-go'); }
+        else { r.style.transform = ''; if (bg) { bg.remove(); bg = null; } }
       }
     });
     r.addEventListener('contextmenu', function (e) { e.preventDefault(); });
   }
+
+  var TRASH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg>';
 
   function quickMenu(it) {
     if (it.st === 'upload') { explain(it); return; }
@@ -353,7 +364,6 @@
       '<div class="sheet-email"><b>' + esc(it.merchant || '영수증') + '</b> · ' + esc(it.category) + '</div>' +
       (ro ? '<div class="sheet-item sub">청구완료된 영수증은 상세에서 [보관중으로 되돌리기] 후 고칠 수 있습니다.</div>' :
         cats.map(function (c) { return '<button class="sheet-item" data-cat="' + c + '" type="button">' + c + '(으)로 구분 바꾸기</button>'; }).join('') +
-        '<div class="sheet-row"><span>귀속 월</span><input type="month" id="qmMonth" value="' + esc(it.month) + '"><button class="mini ok" id="qmMonthOk" type="button">바꾸기</button></div>' +
         (it.st === '제외' ? '<button class="sheet-item" id="qmRestore" type="button">복원</button>' : '<button class="sheet-item danger" id="qmExclude" type="button">제외</button>')) +
       '<button class="sheet-item sub" id="qmClose" type="button">닫기</button></div>';
     document.body.appendChild(wrap);
@@ -363,12 +373,6 @@
     wrap.querySelectorAll('[data-cat]').forEach(function (b) {
       b.onclick = function () { close(); ctx.quickEdit(it, { category: b.dataset.cat }, b.dataset.cat + '(으)로 바꿨습니다'); };
     });
-    var mo = wrap.querySelector('#qmMonthOk');
-    if (mo) mo.onclick = function () {
-      var v = wrap.querySelector('#qmMonth').value;
-      if (!/^\d{4}-\d{2}$/.test(v)) { ctx.toast('귀속 월을 골라 주세요'); return; }
-      close(); if (v !== it.month) ctx.quickEdit(it, { month: v }, '귀속 월을 ' + Number(v.slice(5)) + '월로 바꿨습니다');
-    };
     var ex = wrap.querySelector('#qmExclude');
     if (ex) ex.onclick = function () { close(); ctx.statusAction('exclude', it); };
     var rs = wrap.querySelector('#qmRestore');

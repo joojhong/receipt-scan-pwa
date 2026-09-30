@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '0.8.0';
+  var APP_VERSION = '0.8.1';
   var CATEGORIES = ['경비', '접대비', '회의비', '출장비'];
   var CACHE_KEY = 'rs.cache.receipts';
 
