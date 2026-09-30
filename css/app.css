@@ -120,3 +120,16 @@ a.banner{display:block;text-decoration:none}
 .mini{height:36px;padding:0 12px;border-radius:10px;border:1px solid #DADCE0;background:#fff;font-size:13px;font-weight:600;cursor:pointer}
 .mini.ok{background:var(--accent);border-color:var(--accent);color:#fff}
 .hint{margin:10px 20px;font-size:12px;color:var(--sub);line-height:1.5}
+
+/* 이름 입력(승인 대기) · 관리자 목록의 이름 */
+.namebox{width:100%;max-width:340px;margin:14px auto 4px;text-align:left}
+.namebox label{display:block;font-size:14px;font-weight:600;margin-bottom:6px}
+.namebox label span{display:block;font-size:12px;font-weight:400;color:var(--sub);margin-top:2px}
+.namerow{display:flex;gap:8px}
+.namerow input{flex:1;min-width:0;height:44px;border:1px solid #DADCE0;border-radius:10px;padding:0 12px;font-size:16px;font-family:inherit;background:#fff;color:var(--ink)}
+.namerow .mini{height:44px}
+.namestate{font-size:12px;color:#A11D1D;margin-top:6px}
+.namestate.ok{color:#0F7B3F}
+.uname{font-size:15px;font-weight:700;word-break:break-all}
+.uname.none{color:var(--sub);font-weight:600}
+.uinfo .uemail{font-size:12px;font-weight:400;color:var(--sub);margin-top:2px}
