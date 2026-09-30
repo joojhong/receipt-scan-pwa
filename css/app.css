@@ -364,3 +364,4 @@ button.banner{display:block;width:calc(100% - 40px);text-align:left;border:0;cur
 .pv-box{position:absolute;background:#EFEDE7;outline:1px dashed #D4D1C8}
 .pv-box img{width:100%;height:100%;display:block}
 .pv-alt{color:var(--ink)!important;flex-basis:110px!important}
+.dt-seg2 button{min-width:0}
