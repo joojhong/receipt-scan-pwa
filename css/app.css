@@ -216,3 +216,5 @@ button.banner{display:block;width:calc(100% - 40px);text-align:left;border:0;cur
 .pay-sheet .cap-other{margin:10px 4px 0}
 .pay-sheet .hint{margin:10px 4px 0}
 .cap-actions.one{grid-template-columns:1fr;padding:16px 0 0}
+.cap-tips{margin:14px 20px 0;padding:0 0 0 18px;font-size:13px;color:var(--sub);line-height:1.6}
+.cap-tips b{color:var(--ink)}
