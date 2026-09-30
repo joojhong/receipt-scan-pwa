@@ -164,7 +164,77 @@
     });
   }
 
+  // ── 촬영한 영수증 올리기(업로드 대기열이 씀) ──
+  var UPLOAD = 'https://www.googleapis.com/upload/drive/v3/files';
+
+  // 원본/2026-09 같은 달 폴더. 없으면 만듦(appProperties로 찾으므로 이름을 바꿔도 찾음)
+  async function monthFolder(ws, month, email) {
+    var key = 'rs.mf.' + email + '.' + month;
+    var cached = null;
+    try { cached = localStorage.getItem(key); } catch (e) { /* 무시 */ }
+    if (cached && await exists(cached)) return cached;
+    var q = "appProperties has { key='rsRole' and value='month' } and appProperties has { key='rsMonth' and value='" + month + "' }" +
+      " and '" + ws.originalsId + "' in parents and trashed=false";
+    var d = await api(DRIVE + '?q=' + encodeURIComponent(q) + '&fields=files(id)&orderBy=createdTime&pageSize=5&spaces=drive');
+    var id = d.files && d.files[0] ? d.files[0].id : null;
+    if (!id) {
+      var r = await api(DRIVE + '?fields=id', { method: 'POST', json: {
+        name: month, mimeType: FOLDER, parents: [ws.originalsId], appProperties: { rsRole: 'month', rsMonth: month } } });
+      id = r.id;
+    }
+    try { localStorage.setItem(key, id); } catch (e) { /* 무시 */ }
+    return id;
+  }
+
+  // 같은 영수증 ID로 이미 올린 파일이 있으면 그 ID(재시도해도 중복으로 올리지 않기 위함)
+  async function findUpload(receiptId) {
+    var q = "appProperties has { key='rsReceiptId' and value='" + receiptId + "' } and trashed=false";
+    var d = await api(DRIVE + '?q=' + encodeURIComponent(q) + '&fields=files(id)&pageSize=1&spaces=drive');
+    return d.files && d.files[0] ? d.files[0].id : null;
+  }
+
+  async function uploadJpeg(parentId, receiptId, blob) {
+    var meta = { name: receiptId + '.jpg', mimeType: 'image/jpeg', parents: [parentId], appProperties: { rsReceiptId: receiptId } };
+    var b = 'rs' + Math.random().toString(36).slice(2);
+    var body = new Blob([
+      '--' + b + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + JSON.stringify(meta) + '\r\n',
+      '--' + b + '\r\nContent-Type: image/jpeg\r\n\r\n', blob, '\r\n--' + b + '--'
+    ]);
+    var d = await api(UPLOAD + '?uploadType=multipart&fields=id', { method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + b }, body: body });
+    return d.id;
+  }
+
+  async function hasReceiptRow(ws, receiptId) {
+    var d = await api(SHEETS + '/' + ws.sheetId + '/values/' + encodeURIComponent('영수증!A2:A'));
+    return (d.values || []).some(function (r) { return r[0] === receiptId; });
+  }
+
+  // 영수증 탭에 한 줄 추가(열 순서는 RECEIPT_HEADERS)
+  async function appendReceipt(ws, r) {
+    var row = new Array(RECEIPT_HEADERS.length).fill('');
+    row[COL.id] = r.id;
+    row[COL.kind] = '영수증';
+    row[COL.capturedAt] = r.capturedAt;
+    row[COL.category] = r.category;
+    row[COL.status] = '판독대기';
+    row[COL.card] = '';
+    row[COL.cardType] = r.cardType;
+    row[COL.month] = r.month;
+    row[13] = r.memo || '';          // 메모
+    row[14] = r.widthMm;             // 영수증 폭
+    row[17] = 0;                     // 판독 시도
+    row[18] = r.fileId;              // 원본 파일 ID
+    row[21] = r.updatedAt;           // 앱 수정일시
+    await api(SHEETS + '/' + ws.sheetId + '/values/' + encodeURIComponent('영수증!A1') + ':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS', {
+      method: 'POST', json: { values: [row] } });
+  }
+
   window.RSStore = {
+    monthFolder: monthFolder,
+    findUpload: findUpload,
+    uploadJpeg: uploadJpeg,
+    hasReceiptRow: hasReceiptRow,
+    appendReceipt: appendReceipt,
     ensureWorkspace: ensureWorkspace,
     readReceipts: readReceipts,
     workspace: loadWs,
