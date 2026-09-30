@@ -364,6 +364,7 @@
       '<div class="sheet-email"><b>' + esc(it.merchant || '영수증') + '</b> · ' + esc(it.category) + '</div>' +
       (ro ? '<div class="sheet-item sub">청구완료된 영수증은 상세에서 [보관중으로 되돌리기] 후 고칠 수 있습니다.</div>' :
         cats.map(function (c) { return '<button class="sheet-item" data-cat="' + c + '" type="button">' + c + '(으)로 구분 바꾸기</button>'; }).join('') +
+        '<div class="sheet-row"><span>귀속 월</span><input type="month" id="qmMonth" value="' + esc(it.month) + '"><button class="mini ok" id="qmMonthOk" type="button">바꾸기</button></div>' +
         (it.st === '제외' ? '<button class="sheet-item" id="qmRestore" type="button">복원</button>' : '<button class="sheet-item danger" id="qmExclude" type="button">제외</button>')) +
       '<button class="sheet-item sub" id="qmClose" type="button">닫기</button></div>';
     document.body.appendChild(wrap);
@@ -373,6 +374,12 @@
     wrap.querySelectorAll('[data-cat]').forEach(function (b) {
       b.onclick = function () { close(); ctx.quickEdit(it, { category: b.dataset.cat }, b.dataset.cat + '(으)로 바꿨습니다'); };
     });
+    var mo = wrap.querySelector('#qmMonthOk');
+    if (mo) mo.onclick = function () {
+      var v = wrap.querySelector('#qmMonth').value;
+      if (!/^\d{4}-\d{2}$/.test(v)) { ctx.toast('귀속 월을 골라 주세요'); return; }
+      close(); if (v !== it.month) ctx.quickEdit(it, { month: v }, '귀속 월을 ' + Number(v.slice(5)) + '월로 바꿨습니다');
+    };
     var ex = wrap.querySelector('#qmExclude');
     if (ex) ex.onclick = function () { close(); ctx.statusAction('exclude', it); };
     var rs = wrap.querySelector('#qmRestore');

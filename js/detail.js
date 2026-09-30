@@ -99,9 +99,9 @@
     h += extraFields(v, dis, errs);
     h += field('가맹점명', '<input type="text" data-k="merchant" maxlength="60" value="' + esc(v.merchant) + '"' + dis + '>');
     h += field('가맹점 주소', '<input type="text" data-k="address" maxlength="100" value="' + esc(v.address) + '"' + dis + '>');
-    // 귀속 월은 거래일(카드 사용일)의 달로 자동 고정(재홍 님 결정). 앱에서는 보여 주기만 함
-    h += field('귀속 월', '<div class="dt-ro">' + (v.month ? esc(Number(v.month.slice(0, 4))) + '년 ' + esc(Number(v.month.slice(5, 7))) + '월' : '—') + '</div>', '', false,
-      '거래일(카드 사용일) 기준으로 자동으로 정해집니다');
+    // 귀속 월: 기본은 거래일(카드 사용일)의 달로 자동. 필요하면 앱에서 바꿀 수 있음(예: 이번 달 청구에서 빼기)
+    h += field('귀속 월', '<input type="month" data-k="month" value="' + esc(v.month) + '"' + dis + '>', errs.month, false,
+      D.monthFollows ? '거래일(카드 사용일) 기준으로 자동으로 정해집니다. 바꾸면 그 달 청구로 옮겨집니다' : '직접 바꾼 값입니다. 거래일을 바꿔도 따라 바뀌지 않습니다');
     h += field('내역', '<input type="text" data-k="desc" maxlength="100" value="' + esc(v.desc) + '"' + dis + '>');
     h += field('메모', '<input type="text" data-k="memo" maxlength="100" value="' + esc(v.memo) + '"' + dis + '>');
     var other = [80, 58].indexOf(Number(v.widthMm)) < 0;
@@ -212,7 +212,7 @@
           D.v.widthMm = val === '' ? '' : Number(val);
         } else if (k === 'date') {
           D.v.date = val;
-          if (val) D.v.month = val.slice(0, 7);
+          if (D.monthFollows && val) D.v.month = val.slice(0, 7);
         } else if (k === 'month') {
           D.v.month = val; D.monthFollows = false;
         } else {
