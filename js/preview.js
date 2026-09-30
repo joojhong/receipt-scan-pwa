@@ -2,7 +2,9 @@
    - 보관함에서 체크한 영수증을 설계서 A4 배치 규칙(RSLayout)대로 놓아 페이지별로 보여 줌
    - 영수증 실제 크기 = 촬영 때 고른 폭(mm) × 사진 비율. 회전 값을 적용함
    - 파일명 규칙: YYMMDD_구분_영수증_이름.pdf (출장비 = 출장일, 그 외 = 청구월 말일)
-   - PDF 저장·청구완료는 4번 작업에서 붙임 */
+   - [PDF로 저장하고 청구완료]: PDF 만들기 → Drive 청구본/YYYY-MM/에 저장 → 시트에서 청구완료 처리(설계서 저장 순서)
+     PDF 저장 뒤 시트만 실패하면 PDF는 다시 만들지 않고 청구완료 처리만 다시 시도
+   - [다시 만들기]로 들어오면 같은 PDF 파일의 내용을 바꾸고, 빠진 영수증은 보관중으로 되돌림 */
 (function () {
   'use strict';
 
@@ -40,18 +42,20 @@
   // ── 그리기 ──
   function render(root, c) {
     ctx = c;
+    if (P && P.done) return renderDone(root, P.done);
     var sel = c.selection;
     if (!sel || !sel.ids.length) {
       root.appendChild(el('<div class="empty"><b>고른 영수증이 없습니다</b>보관함에서 영수증을 체크한 뒤 [A4 미리보기·PDF]를 눌러 주세요.</div>'));
       setTimeout(function () { ctx.back(); }, 1200);
       return;
     }
-    var key = sel.category + '|' + sel.ids.join(',');
+    var key = sel.category + '|' + sel.ids.join(',') + '|' + (sel.remake ? sel.remake.pdfId : '');
     if (!P || P.key !== key) start(sel, key);
 
     var items = P.items, sum = 0;
     items.forEach(function (it) { sum += it.amount || 0; });
-    var name = fileName(sel.category, items, ctx.userName);
+    var remake = sel.remake || null;
+    var name = remake && remake.name ? remake.name : fileName(sel.category, items, ctx.userName);
     var warns = [];
     if (sel.category === '출장비') {
       var trips = {}; items.forEach(function (it) { trips[it.tripDate || '없음'] = 1; });
@@ -63,10 +67,13 @@
     }
     if (sel.leftOut) warns.push('판독 대기·확인 필요 ' + sel.leftOut + '건은 아직 값이 없어 PDF에 들어가지 않습니다.');
 
-    var h = '<header class="dt-top"><button class="icon-btn" id="pvBack" aria-label="뒤로">' + ICON.back + '</button><h1>A4 미리보기</h1></header>' +
+    var h = '<header class="dt-top"><button class="icon-btn" id="pvBack" aria-label="뒤로">' + ICON.back + '</button><h1>' + (remake ? '다시 만들기' : 'A4 미리보기') + '</h1></header>' +
+      (remake ? '<div class="banner">이 PDF 파일의 내용을 새로 바꿉니다. 파일명과 Drive 위치는 그대로이고, 바뀌기 전 내용은 Drive 버전 기록에 남습니다.</div>' : '') +
       '<div class="pv-sum"><b>' + esc(sel.category) + '</b> · ' + items.length + '건 · ' + won(sum) + '원' +
         (P.pages ? ' · <b>' + P.pages.length + '쪽</b>' : '') + '</div>' +
-      '<div class="pv-name"><span>파일명</span><b>' + esc(name) + '</b></div>' +
+      '<div class="pv-name"><span>파일명' + (remake ? ' (그대로)' : '') + '</span><b>' + esc(name) + '</b>' +
+        (P.size ? '<span>PDF 크기 약 ' + (P.size / 1048576).toFixed(1) + 'MB' + (P.reduced ? ' · 10MB를 넘지 않게 화질을 조금 낮춤' : '') + '</span>' : '') + '</div>' +
+      (P.tooBig ? '<div class="banner warn">화질을 낮춰도 10MB를 넘습니다. 인트라넷에 올라가지 않을 수 있으니 영수증을 두 번에 나눠 만들어 주세요.</div>' : '') +
       warns.map(function (w) { return '<div class="banner warn">' + esc(w) + '</div>'; }).join('') +
       (P.error ? '<div class="banner warn" role="alert">' + esc(P.error) + ' <button class="mini" id="pvRetry" type="button">다시 시도</button></div>' : '');
 
@@ -83,15 +90,79 @@
       h += '<p class="hint">흰 종이 = A4 한 장(여백 10mm). 영수증은 실제 크기로 놓고, 넘치는 쪽만 조금 줄입니다(85%까지).</p>';
     }
     h += '<div class="dt-bar"><button class="btn-alt pv-alt" id="pvBack2" type="button">고르기로</button>' +
-      '<button class="cta" id="pvSave" type="button"' + (P.pages ? '' : ' disabled') + '>PDF로 저장하고 청구완료</button></div><div class="bx-space"></div>';
+      '<button class="cta" id="pvSave" type="button"' + (P.pages && !P.busy && navigator.onLine ? '' : ' disabled') + '>' +
+        (P.busy ? esc(P.busy) : P.savedPdf ? '청구완료 처리 다시 시도' : remake ? 'PDF 바꾸고 청구완료' : 'PDF로 저장하고 청구완료') + '</button></div><div class="bx-space"></div>';
+    if (!navigator.onLine) h = h.replace('<div class="dt-bar">', '<div class="banner">온라인에서만 PDF를 저장할 수 있습니다.</div><div class="dt-bar">');
 
     root.appendChild(el(h));
     var back = function () { ctx.back(); };
     root.querySelector('#pvBack').onclick = back;
     root.querySelector('#pvBack2').onclick = back;
-    root.querySelector('#pvSave').onclick = function () { ctx.toast('PDF 저장·청구완료는 4단계 4번 작업에서 만듭니다'); };
+    root.querySelector('#pvSave').onclick = function () { save(sel, name); };
     var rt = root.querySelector('#pvRetry');
     if (rt) rt.onclick = function () { P = null; ctx.rerender(); };
+  }
+
+  // ── 저장 ──
+  async function save(sel, name) {
+    var p = P;
+    if (p.busy) return;
+    p.error = '';
+    var remake = sel.remake || null;
+    var byId = {}; p.items.forEach(function (it) { byId[it.id] = it; });
+    try {
+      if (!p.savedPdf) {
+        p.busy = 'PDF를 만드는 중…'; redraw();
+        var built = await RSPdf.build(p.pages, byId, function (it) { return ctx.photoBlob(it).then(decode); },
+          function (msg) { p.busy = msg; setBusy(msg); });
+        p.size = built.blob.size; p.reduced = built.reduced; p.tooBig = !!built.tooBig;
+        if (p.tooBig && !confirm('PDF가 ' + (p.size / 1048576).toFixed(1) + 'MB로 인트라넷 한도(10MB)를 넘습니다. 그래도 저장할까요?')) { p.busy = ''; redraw(); return; }
+        p.busy = 'Drive에 저장하는 중…'; redraw();
+        var f;
+        if (remake) f = await ctx.replacePdf(remake.pdfId, built.blob);
+        else {
+          var folder = await ctx.claimFolder(monthOfName(name, sel, p.items));
+          f = await ctx.uploadPdf(folder, await ctx.freeName(folder, name), built.blob);
+        }
+        p.savedPdf = { id: f.id, name: f.name || name };
+      }
+      p.busy = '청구완료 처리 중…'; redraw();
+      var now = ctx.nowIso(), list = p.items.map(function (it) {
+        return { id: it.id, status: '청구완료', pdfId: p.savedPdf.id, claimedAt: now, expect: remake ? ['보관중', '청구완료'] : ['보관중'] };
+      });
+      if (remake) remake.ids.forEach(function (id) {
+        if (!byId[id]) list.push({ id: id, status: '보관중', pdfId: '', claimedAt: '', expect: ['청구완료'] });
+      });
+      var res = await ctx.setClaimStatus(list);
+      var removed = remake ? remake.ids.filter(function (id) { return !byId[id]; }).length : 0;
+      p.busy = '';
+      p.done = { name: p.savedPdf.name, id: p.savedPdf.id, count: p.items.length, removed: removed, skipped: res.skipped.length, size: p.size, remake: !!remake };
+      ctx.claimed();
+      redraw();
+    } catch (e) {
+      p.busy = '';
+      p.error = (p.savedPdf ? 'PDF는 Drive에 저장했지만 청구완료 처리를 하지 못했습니다. ' : 'PDF를 저장하지 못했습니다. ') + (e.message || e);
+      redraw();
+    }
+  }
+
+  function setBusy(msg) { var b = document.getElementById('pvSave'); if (b) b.textContent = msg; }
+
+  // 청구본 폴더의 달: 파일명 앞 날짜의 달(출장비는 출장일, 그 외는 청구월)
+  function monthOfName(name, sel, items) {
+    var m = /^(\d{2})(\d{2})\d{2}_/.exec(name);
+    if (m) return '20' + m[1] + '-' + m[2];
+    return (items[0] && items[0].month) || new Date().toISOString().slice(0, 7);
+  }
+
+  function renderDone(root, d) {
+    root.appendChild(el('<header class="dt-top"><h1 style="padding-left:12px">' + (d.remake ? 'PDF를 바꿨습니다' : '청구완료') + '</h1></header>' +
+      '<div class="pv-done"><div class="pv-ok">✓</div><b>' + esc(d.name) + '</b>' +
+      '<p>' + d.count + '건을 청구완료로 바꿨습니다' + (d.removed ? ' · ' + d.removed + '건은 보관중으로 되돌렸습니다' : '') + '.<br>PDF 크기 약 ' + (d.size / 1048576).toFixed(1) + 'MB · Drive "영수증 스캔/청구본" 폴더</p>' +
+      (d.skipped ? '<p class="err">' + d.skipped + '건은 PC에서 상태가 바뀌어 있어 그대로 두었습니다.</p>' : '') +
+      '<a class="cta pv-open" href="https://drive.google.com/file/d/' + encodeURIComponent(d.id) + '/view" target="_blank" rel="noopener">PDF 열기</a>' +
+      '<button class="btn-alt pv-alt2" id="pvDone" type="button">보관함으로</button></div>'));
+    root.querySelector('#pvDone').onclick = function () { P = null; ctx.finish(); };
   }
 
   function start(sel, key) {

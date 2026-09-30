@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '0.9.2';
+  var APP_VERSION = '0.10.0';
   var CATEGORIES = ['경비', '접대비', '회의비', '출장비'];
   var CACHE_KEY = 'rs.cache.receipts';
 
@@ -452,6 +452,12 @@
       rerender: render,
       statusAction: statusAction,
       startPreview: function (sel) { state.selection = sel; location.hash = '#/preview'; },
+      fileInfo: function (id) { return RSStore.fileInfo(id); },
+      unclaimAll: function (ids) {
+        RSStore.setClaimStatus(state.ws, ids.map(function (id) { return { id: id, status: '보관중', pdfId: '', claimedAt: '', expect: ['청구완료'] }; }), localIsoNow())
+          .then(function (r) { toast(ids.length - r.skipped.length + '건을 보관중으로 되돌렸습니다'); refresh(); })
+          .catch(function (e) { toast(e.message || '되돌리지 못했습니다'); });
+      },
       quickEdit: function (it, ch, msg) {
         editReceipt(it.id, ch, it).then(function (res) { toast(res.conflicts.length ? 'PC에서 수정된 값으로 바뀌었습니다' : msg); render(); })
           .catch(function (e) { toast(e.message || '바꾸지 못했습니다'); });
@@ -569,15 +575,25 @@
   function renderPreview(root) {
     if (!state.user || state.pending) return renderHome(root);
     var sel = state.selection;
-    var items = sel ? sel.ids.map(findItem).filter(function (it) { return it && it.st === '보관중'; }) : [];
+    var items = sel ? sel.ids.map(findItem).filter(function (it) {
+      return it && (it.st === '보관중' || (sel.remake && it.st === '청구완료' && it.pdfId === sel.remake.pdfId));
+    }) : [];
     RSPreview.render(root, {
-      selection: sel ? { ids: items.map(function (it) { return it.id; }), items: items, category: sel.category, leftOut: sel.leftOut } : null,
+      selection: sel ? { ids: items.map(function (it) { return it.id; }), items: items, category: sel.category, leftOut: sel.leftOut, remake: sel.remake || null } : null,
       userName: state.user.name || (state.user.email || '').split('@')[0],
       toast: toast,
       back: function () { location.hash = '#/box'; },
       isActive: function () { return currentTab() === 'preview'; },
       rerender: render,
       imageSize: function (fileId) { return RSStore.imageSize(fileId); },
+      claimFolder: function (month) { return RSStore.claimFolder(state.ws, month); },
+      freeName: RSStore.freeName,
+      uploadPdf: RSStore.uploadPdf,
+      replacePdf: RSStore.replacePdf,
+      setClaimStatus: function (list) { return RSStore.setClaimStatus(state.ws, list, localIsoNow()); },
+      nowIso: localIsoNow,
+      claimed: function () { refresh(); },
+      finish: function () { state.selection = null; RSBox.endRemake(); location.hash = '#/box'; },
       photoBlob: async function (r) {
         var b = RSBox.localBlob(r.id);
         if (b) return b;

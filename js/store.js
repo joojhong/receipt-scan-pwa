@@ -308,6 +308,72 @@
       method: 'POST', json: { values: [row] } });
   }
 
+  // ── 청구본 PDF(4단계 4번) ──
+  // 청구본/2026-09 같은 달 폴더. 없으면 만듦
+  async function claimFolder(ws, month) {
+    var q = "appProperties has { key='rsRole' and value='claimMonth' } and appProperties has { key='rsMonth' and value='" + month + "' }" +
+      " and '" + ws.claimsId + "' in parents and trashed=false";
+    var d = await api(DRIVE + '?q=' + encodeURIComponent(q) + '&fields=files(id)&orderBy=createdTime&pageSize=5&spaces=drive');
+    if (d.files && d.files[0]) return d.files[0].id;
+    var r = await api(DRIVE + '?fields=id', { method: 'POST', json: {
+      name: month, mimeType: FOLDER, parents: [ws.claimsId], appProperties: { rsRole: 'claimMonth', rsMonth: month } } });
+    return r.id;
+  }
+
+  // 같은 폴더에 같은 이름이 있으면 _2, _3 …을 붙인 이름
+  async function freeName(folderId, name) {
+    var base = name.replace(/\.pdf$/i, ''), n = 1, cand = name;
+    for (;;) {
+      var q = "name = '" + cand.replace(/'/g, "\\'") + "' and '" + folderId + "' in parents and trashed=false";
+      var d = await api(DRIVE + '?q=' + encodeURIComponent(q) + '&fields=files(id)&pageSize=1&spaces=drive');
+      if (!d.files || !d.files.length) return cand;
+      n++; cand = base + '_' + n + '.pdf';
+    }
+  }
+
+  function multipart(meta, blob, type) {
+    var b = 'rs' + Math.random().toString(36).slice(2);
+    return { boundary: b, body: new Blob([
+      '--' + b + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + JSON.stringify(meta) + '\r\n',
+      '--' + b + '\r\nContent-Type: ' + type + '\r\n\r\n', blob, '\r\n--' + b + '--'
+    ]) };
+  }
+
+  // 새 PDF 올리기. keepRevisionForever: 나중에 [다시 만들기]로 내용을 바꿔도 이 버전이 Drive 버전 기록에 계속 남음
+  async function uploadPdf(folderId, name, blob) {
+    var m = multipart({ name: name, mimeType: 'application/pdf', parents: [folderId], appProperties: { rsRole: 'claimPdf' } }, blob, 'application/pdf');
+    return api(UPLOAD + '?uploadType=multipart&keepRevisionForever=true&fields=id,name', {
+      method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + m.boundary }, body: m.body });
+  }
+
+  // [다시 만들기]: 같은 파일(같은 ID·이름)의 내용만 새 PDF로 바꿈
+  async function replacePdf(fileId, blob) {
+    return api(UPLOAD + '/' + fileId + '?uploadType=media&keepRevisionForever=true&fields=id,name', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/pdf' }, body: blob });
+  }
+
+  async function fileInfo(fileId) {
+    return api(DRIVE + '/' + fileId + '?fields=id,name,size,webViewLink,trashed');
+  }
+
+  // 여러 영수증의 상태·청구 PDF ID·청구일시를 한 번에 바꿈. list = [{id, status, pdfId, claimedAt, expect:[허용 상태]}]
+  // 시트의 지금 상태가 expect에 없으면(PC에서 바뀜) 그 줄은 건너뛰고 skipped로 돌려줌
+  async function setClaimStatus(ws, list, updatedAt) {
+    var d = await api(SHEETS + '/' + ws.sheetId + '/values:batchGet?ranges=' + encodeURIComponent('영수증!A2:A') + '&ranges=' + encodeURIComponent('영수증!E2:E'));
+    var ids = (d.valueRanges[0].values || []), sts = (d.valueRanges[1].values || []);
+    var rowOf = {};
+    ids.forEach(function (r, i) { if (r[0]) rowOf[r[0]] = { row: i + 2, status: (sts[i] && sts[i][0]) || '' }; });
+    var data = [], skipped = [];
+    list.forEach(function (x) {
+      var cur = rowOf[x.id];
+      if (!cur || (x.expect && x.expect.indexOf(cur.status) < 0)) { skipped.push(x.id); return; }
+      data.push({ range: '영수증!E' + cur.row, values: [[x.status]] });
+      data.push({ range: '영수증!T' + cur.row + ':V' + cur.row, values: [[x.pdfId, x.claimedAt, updatedAt]] });
+    });
+    if (data.length) await api(SHEETS + '/' + ws.sheetId + '/values:batchUpdate', { method: 'POST', json: { valueInputOption: 'RAW', data: data } });
+    return { skipped: skipped };
+  }
+
   // ── 상세 화면 저장 ──
   function colName(i) { var s = ''; i++; while (i > 0) { var m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; }
 
@@ -344,6 +410,12 @@
     ensureWorkspace: ensureWorkspace,
     readReceipts: readReceipts,
     download: download,
+    claimFolder: claimFolder,
+    freeName: freeName,
+    uploadPdf: uploadPdf,
+    replacePdf: replacePdf,
+    fileInfo: fileInfo,
+    setClaimStatus: setClaimStatus,
     imageSize: imageSize,
     findRow: findRow,
     writeCells: writeCells,

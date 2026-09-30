@@ -39,7 +39,7 @@
     return CATEGORIES.indexOf(c) >= 0 ? c : CATEGORIES[0];
   }
   function setCat(c) {
-    if (B.cat !== c) B.sel = {};
+    if (B.cat !== c) { B.sel = {}; B.remake = null; }
     B.cat = c;
     try { localStorage.setItem(CAT_KEY, c); } catch (e) { /* 무시 */ }
   }
@@ -93,8 +93,9 @@
     return out;
   }
 
+  function inRemake(it) { return !!(B.remake && it.st === '청구완료' && it.pdfId === B.remake.pdfId); }
   function inTab(it) {
-    if (B.tab === 'keep') return !!KEEP[it.st];
+    if (B.tab === 'keep') return !!KEEP[it.st] || inRemake(it);
     if (B.tab === 'done') return it.st === '청구완료';
     return it.st === '제외';
   }
@@ -109,7 +110,7 @@
     var month = ctx.month, mNum = Number(month.slice(5, 7));
     var all = items();
     var ofCat = all.filter(function (it) { return it.category === B.cat; });
-    var inMonth = function (it) { return B.all || it.month === month; };
+    var inMonth = function (it) { return B.all || it.month === month || inRemake(it); };
     var list = ofCat.filter(function (it) { return inTab(it) && inMonth(it); })
       .sort(function (a, b) { return sortKey(a) < sortKey(b) ? -1 : 1; });
     var keepCount = ofCat.filter(function (it) { return KEEP[it.st] && inMonth(it); }).length;
@@ -117,7 +118,7 @@
 
     // 보이지 않거나 체크할 수 없게 된 항목은 선택에서 뺌
     var checkable = {};
-    if (B.tab === 'keep') list.forEach(function (it) { if (it.st === '보관중') checkable[it.id] = it; });
+    if (B.tab === 'keep') list.forEach(function (it) { if (it.st === '보관중' || inRemake(it)) checkable[it.id] = it; });
     Object.keys(B.sel).forEach(function (id) { if (!checkable[id]) delete B.sel[id]; });
     var selIds = Object.keys(B.sel), selSum = 0;
     selIds.forEach(function (id) { selSum += checkable[id].amount; });
@@ -171,6 +172,8 @@
       '<div class="bx-tabs" role="tablist">' +
         tabBtn('keep', '보관중 ' + keepCount) + tabBtn('done', '청구완료') + tabBtn('excl', '제외') +
       '</div>' +
+      (B.remake && B.tab === 'keep' ? '<div class="banner bx-remake"><b>다시 만들기</b> · ' + esc(B.remake.name || 'PDF') +
+        '<br>넣을 영수증은 체크하고 뺄 영수증은 체크를 푼 뒤 [A4 미리보기·PDF]를 눌러 주세요. <button class="mini" id="bxRemakeCancel" type="button">취소</button></div>' : '') +
       (ctx.error ? '<div class="banner warn" role="alert">' + esc(ctx.error) + '</div>' : '') +
       (ctx.offline ? '<div class="banner">오프라인입니다. 마지막으로 불러온 목록을 보여 줍니다.</div>' : '') +
       body + bar + (bar ? '<div class="bx-space"></div>' : '')
@@ -198,7 +201,7 @@
   };
 
   function row(it) {
-    var canCheck = B.tab === 'keep' && it.st === '보관중';
+    var canCheck = B.tab === 'keep' && (it.st === '보관중' || inRemake(it));
     var on = !!B.sel[it.id];
     var isFile = it.kind === '첨부';
     var title = isFile ? (it.desc || '파일 첨부') :
@@ -206,6 +209,7 @@
     var date = it.txAt ? shortDate(it.txAt, true) : (it.capturedAt ? '촬영 ' + shortDate(it.capturedAt, true) : '');
     var sub = [date, it.card || '', it.memo ? it.memo.slice(0, 24) : ''].filter(Boolean).join(' · ');
     var badges = [];
+    if (inRemake(it) && B.tab === 'keep') badges.push('<span class="bdg b-up">이 PDF에 들어 있음</span>');
     if (BADGE[it.st]) badges.push('<span class="bdg ' + BADGE[it.st][1] + '">' + BADGE[it.st][0] + '</span>');
     var tp = parts(it.txAt);
     if (tp && it.month && it.month !== tp.y + '-' + String(tp.mo).padStart(2, '0')) badges.push('<span class="bdg b-month">귀속 ' + Number(it.month.slice(5, 7)) + '월</span>');
@@ -257,12 +261,49 @@
     return order.map(function (k) {
       var g = groups[k], sum = 0, when = '';
       g.forEach(function (it) { sum += it.amount; if (it.claimedAt > when) when = it.claimedAt; });
+      var has = k !== '(PDF 정보 없음)', nm = has ? pdfName(k) : '';
       return '<div class="bx-group"><div class="bx-gh"><b>' + (when ? shortDate(when) + ' 청구' : '청구') + '</b> · ' + g.length + '건 · ' + won(sum) + '원</div>' +
+        (has ? '<div class="bx-pdfname" data-pdfname="' + esc(k) + '">' + esc(nm || 'PDF 이름 불러오는 중…') + '</div>' +
+          '<div class="bx-gbtns"><a class="mini" href="https://drive.google.com/file/d/' + encodeURIComponent(k) + '/view" target="_blank" rel="noopener">PDF 열기</a>' +
+          '<button class="mini ok" type="button" data-remake="' + esc(k) + '">다시 만들기</button>' +
+          '<button class="mini" type="button" data-unclaim="' + esc(k) + '">전체 되돌리기</button></div>' : '') +
         '<div class="bx-list">' + g.map(row).join('') + '</div></div>';
     }).join('');
   }
 
+  // 청구 PDF 파일명(Drive에서 한 번 읽어 폰에 기억)
+  var names = {};
+  function pdfName(id) {
+    if (names[id] !== undefined) return names[id];
+    try { var c = localStorage.getItem('rs.pdfname.' + id); if (c) { names[id] = c; return c; } } catch (e) { /* 무시 */ }
+    names[id] = '';
+    ctx.fileInfo(id).then(function (f) {
+      names[id] = f && f.name ? f.name : '';
+      try { if (names[id]) localStorage.setItem('rs.pdfname.' + id, names[id]); } catch (e) { /* 무시 */ }
+      var el2 = document.querySelector('[data-pdfname="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
+      if (el2) el2.textContent = names[id] || '(PDF 이름을 읽지 못했습니다)';
+    }).catch(function () { delete names[id]; });
+    return '';
+  }
+
   function bind(root, checkable, list) {
+    root.querySelectorAll('[data-remake]').forEach(function (b) {
+      b.onclick = function () {
+        var id = b.dataset.remake, ids = list.filter(function (it) { return it.pdfId === id; }).map(function (it) { return it.id; });
+        B.remake = { pdfId: id, name: names[id] || '', ids: ids };
+        B.tab = 'keep'; B.sel = {}; ids.forEach(function (x) { B.sel[x] = 1; });
+        ctx.rerender(); window.scrollTo(0, 0);
+      };
+    });
+    root.querySelectorAll('[data-unclaim]').forEach(function (b) {
+      b.onclick = function () {
+        var id = b.dataset.unclaim, ids = list.filter(function (it) { return it.pdfId === id; }).map(function (it) { return it.id; });
+        if (!confirm(ids.length + '건을 모두 보관중으로 되돌릴까요?\n이미 만든 PDF 파일은 지우지 않습니다.')) return;
+        ctx.unclaimAll(ids);
+      };
+    });
+    var rc = root.querySelector('#bxRemakeCancel');
+    if (rc) rc.onclick = function () { B.remake = null; B.sel = {}; B.tab = 'done'; ctx.rerender(); };
     root.querySelectorAll('.bx-cat').forEach(function (b) {
       b.onclick = function () { setCat(b.dataset.cat); ctx.rerender(); };
     });
@@ -272,7 +313,7 @@
     var ob = root.querySelector('#bxOther');
     if (ob) ob.onclick = function () { B.all = true; ctx.rerender(); };
     root.querySelectorAll('.bx-tabs button').forEach(function (b) {
-      b.onclick = function () { B.tab = b.dataset.tab; B.sel = {}; ctx.rerender(); window.scrollTo(0, 0); };
+      b.onclick = function () { B.tab = b.dataset.tab; B.sel = {}; B.remake = null; ctx.rerender(); window.scrollTo(0, 0); };
     });
     root.querySelector('#bxReload').onclick = function () { ctx.refresh(); };
     var cap = function () { ctx.go('#/capture?cat=' + encodeURIComponent(B.cat) + '&from=box'); };
@@ -317,7 +358,7 @@
     if (pb) pb.onclick = function () {
       var ids = list.filter(function (it) { return B.sel[it.id]; }).map(function (it) { return it.id; }); // 목록 순서대로
       var leftOut = list.filter(function (it) { return it.st === '판독대기' || it.st === '확인필요' || it.st === 'upload'; }).length;
-      ctx.startPreview({ ids: ids, category: B.cat, leftOut: leftOut });
+      ctx.startPreview({ ids: ids, category: B.cat, leftOut: leftOut, remake: B.remake || null });
     };
   }
 
@@ -471,6 +512,7 @@
       return items(receipts || [], email).find(function (x) { return x.id === id; }) || null;
     },
     localBlob: function (id) { var q = local.find(function (x) { return x.id === id; }); return q && q.blob ? q.blob : null; },
+    endRemake: function () { B.remake = null; B.sel = {}; },
     reset: function () {
       B = { cat: null, tab: 'keep', all: false, sel: {} };
       Object.keys(thumbs).forEach(function (k) { if (thumbs[k] !== 'fail') URL.revokeObjectURL(thumbs[k]); });
