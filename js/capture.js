@@ -122,11 +122,13 @@
     } else if (S.step === 'adjust') {
       h = header('모서리 맞추기', S.files.length > 1 ? (S.fileIndex + 1) + ' / ' + S.files.length : '') +
         '<div class="cap-stage" id="stage"><canvas id="adjCanvas"></canvas><canvas id="loupe" class="loupe" width="240" height="240" hidden></canvas></div>' +
-        '<p class="cap-tip">네 모서리의 동그라미를 끌어 영수증 끝에 맞춰 주세요.</p>' +
+        '<p class="cap-tip">' + (S.auto
+          ? (S.usingAuto ? '영수증 테두리를 자동으로 찾았습니다. 어긋난 곳만 동그라미를 끌어 맞춰 주세요.' : '동그라미를 끌어 영수증 끝에 맞춰 주세요.')
+          : '테두리를 자동으로 찾지 못했습니다. 네 모서리의 동그라미를 끌어 영수증 끝에 맞춰 주세요.') + '</p>' +
         (S.error ? '<p class="err" role="alert">' + esc(S.error) + '</p>' : '') +
         '<div class="cap-actions three">' +
           '<button class="btn-alt" id="retake" type="button">다시 찍기</button>' +
-          '<button class="btn-alt" id="fullBtn" type="button">사진 전체</button>' +
+          '<button class="btn-alt" id="fullBtn" type="button">' + (S.auto && !S.usingAuto ? '자동 테두리' : '사진 전체') + '</button>' +
           '<button class="cta" id="nextBtn" type="button"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? esc(S.busy) : '다음') + '</button>' +
         '</div>';
     } else if (S.step === 'preview') {
@@ -242,7 +244,11 @@
     var r = $('retake');
     if (r) r.onclick = function () { discardCurrent(); nextFileOrSelect(); };
     var f = $('fullBtn');
-    if (f) f.onclick = function () { S.corners = defaultCorners(S.work, 0); renderAdjust(); };
+    if (f) f.onclick = function () {
+      if (S.auto && !S.usingAuto) { S.corners = S.auto.map(function (p) { return { x: p.x, y: p.y }; }); S.usingAuto = true; }
+      else { S.corners = defaultCorners(S.work, 0); S.usingAuto = false; }
+      draw();
+    };
     var n = $('nextBtn');
     if (n) n.onclick = toPreview;
     S.el.querySelectorAll('[data-mode]').forEach(function (b) {
@@ -290,7 +296,11 @@
     S.busy = '사진을 여는 중…'; S.error = ''; draw();
     try {
       S.work = await RSImaging.open(file);
-      S.corners = defaultCorners(S.work, 0.06);
+      // 영수증 테두리를 자동으로 찾고, 못 찾으면 사진 안쪽 사각형
+      var auto = null;
+      try { auto = RSImaging.detectQuad(S.work); } catch (e2) { auto = null; }
+      S.auto = auto; S.usingAuto = !!auto;
+      S.corners = auto ? auto.map(function (p) { return { x: p.x, y: p.y }; }) : defaultCorners(S.work, 0.06);
       S.warped = null; S.rot = 0; S.memo = ''; S.warpFailed = false;
       if (S.prefs.mode === 'orig') S.prefs.mode = loadPrefs().mode;
       S.busy = ''; S.step = 'adjust'; draw();

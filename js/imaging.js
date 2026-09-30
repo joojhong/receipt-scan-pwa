@@ -252,6 +252,135 @@
     return c;
   }
 
+  // ── 영수증 테두리 자동 찾기 ──
+  // 1) 작게 줄여 밝기로 종이(밝은 부분)와 바탕을 나눔(오츠 방법: 두 무리가 가장 잘 갈리는 밝기)
+  //    바탕도 밝으면(흰 책상) 테두리 색과 다른 부분을 종이로 봄
+  // 2) 가장 큰 종이 덩어리의 바깥 점들로 볼록 껍질을 만들고 3) 꼭짓점을 줄여 사각형 4점으로 만듦
+  // 못 찾거나 모양이 이상하면 null → 화면에서 기본 사각형을 씀
+  function otsu(hist, n) {
+    var sum = 0, i; for (i = 0; i < 256; i++) sum += i * hist[i];
+    var sB = 0, wB = 0, best = 0, t = 128;
+    for (i = 0; i < 256; i++) {
+      wB += hist[i]; if (!wB) continue;
+      var wF = n - wB; if (!wF) break;
+      sB += i * hist[i];
+      var mB = sB / wB, mF = (sum - sB) / wF, v = wB * wF * (mB - mF) * (mB - mF);
+      if (v > best) { best = v; t = i; }
+    }
+    return t;
+  }
+  function largestBlob(mask, w, h) {
+    var lab = new Int32Array(w * h), stack = new Int32Array(w * h), best = 0, bestId = 0, id = 0;
+    for (var s0 = 0; s0 < w * h; s0++) {
+      if (!mask[s0] || lab[s0]) continue;
+      id++; var top = 0, size = 0; stack[top++] = s0; lab[s0] = id;
+      while (top) {
+        var q = stack[--top]; size++;
+        var x = q % w, y = (q / w) | 0;
+        if (x > 0 && mask[q - 1] && !lab[q - 1]) { lab[q - 1] = id; stack[top++] = q - 1; }
+        if (x < w - 1 && mask[q + 1] && !lab[q + 1]) { lab[q + 1] = id; stack[top++] = q + 1; }
+        if (y > 0 && mask[q - w] && !lab[q - w]) { lab[q - w] = id; stack[top++] = q - w; }
+        if (y < h - 1 && mask[q + w] && !lab[q + w]) { lab[q + w] = id; stack[top++] = q + w; }
+      }
+      if (size > best) { best = size; bestId = id; }
+    }
+    return { lab: lab, id: bestId, size: best };
+  }
+  function hull(pts) {
+    pts.sort(function (a, b) { return a.x - b.x || a.y - b.y; });
+    var cr = function (o, a, b) { return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x); };
+    var lo = [], up = [], i;
+    for (i = 0; i < pts.length; i++) { while (lo.length >= 2 && cr(lo[lo.length - 2], lo[lo.length - 1], pts[i]) <= 0) lo.pop(); lo.push(pts[i]); }
+    for (i = pts.length - 1; i >= 0; i--) { while (up.length >= 2 && cr(up[up.length - 2], up[up.length - 1], pts[i]) <= 0) up.pop(); up.push(pts[i]); }
+    up.pop(); lo.pop();
+    return lo.concat(up);
+  }
+  function triArea(a, b, c) { return Math.abs((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)) / 2; }
+  // 볼록 다각형의 꼭짓점을 하나씩 빼서(빼도 넓이가 가장 적게 줄어드는 점부터) 4개로 만듦
+  function toQuad(poly) {
+    var p = poly.slice();
+    while (p.length > 4) {
+      var mi = 0, ma = Infinity;
+      for (var i = 0; i < p.length; i++) {
+        var a = triArea(p[(i - 1 + p.length) % p.length], p[i], p[(i + 1) % p.length]);
+        if (a < ma) { ma = a; mi = i; }
+      }
+      p.splice(mi, 1);
+    }
+    return p.length === 4 ? p : null;
+  }
+  function polyArea(p) { var s = 0; for (var i = 0; i < p.length; i++) { var a = p[i], b = p[(i + 1) % p.length]; s += a.x * b.y - b.x * a.y; } return Math.abs(s) / 2; }
+
+  function detectQuad(src) {
+    var sm = scaled(src, 360), w = sm.width, h = sm.height, n = w * h;
+    var d = sm.getContext('2d').getImageData(0, 0, w, h).data;
+    var L = new Uint8Array(n), hist = new Uint32Array(256), p;
+    for (p = 0; p < n; p++) { L[p] = (d[p * 4] * 77 + d[p * 4 + 1] * 150 + d[p * 4 + 2] * 29) >> 8; hist[L[p]]++; }
+    // 방법 A: 밝은 쪽 = 종이
+    var t = otsu(hist, n), mask = new Uint8Array(n);
+    for (p = 0; p < n; p++) mask[p] = L[p] > t ? 1 : 0;
+    var cand = [mask];
+    // 방법 B: 사진 가장자리(바탕) 색과 많이 다른 부분 = 종이(바탕이 밝을 때 대비)
+    var br = [], bg = [], bb = [], x, y;
+    for (x = 0; x < w; x++) { [0, h - 1].forEach(function (yy) { var q = (yy * w + x) * 4; br.push(d[q]); bg.push(d[q + 1]); bb.push(d[q + 2]); }); }
+    for (y = 0; y < h; y++) { [0, w - 1].forEach(function (xx) { var q = (y * w + xx) * 4; br.push(d[q]); bg.push(d[q + 1]); bb.push(d[q + 2]); }); }
+    var med = function (a) { a.sort(function (u, v) { return u - v; }); return a[a.length >> 1]; };
+    var mr = med(br), mg = med(bg), mb = med(bb), mask2 = new Uint8Array(n);
+    for (p = 0; p < n; p++) {
+      var dr = d[p * 4] - mr, dg = d[p * 4 + 1] - mg, db = d[p * 4 + 2] - mb;
+      mask2[p] = dr * dr + dg * dg + db * db > 40 * 40 ? 1 : 0;
+    }
+    cand.push(mask2);
+    // 가는 선·작은 점이 종이에 붙어 테두리를 끌어당기지 않도록 한 번 깎았다가 다시 불림(열기 연산)
+    function open2(m) {
+      var r = 2, e = new Uint8Array(n), o = new Uint8Array(n), x2, y2, i2, j2, ok;
+      for (y2 = 0; y2 < h; y2++) for (x2 = 0; x2 < w; x2++) {
+        ok = 1;
+        for (j2 = -r; j2 <= r && ok; j2++) for (i2 = -r; i2 <= r; i2++) {
+          var xx = x2 + i2, yy = y2 + j2;
+          if (xx < 0 || yy < 0 || xx >= w || yy >= h || !m[yy * w + xx]) { ok = 0; break; }
+        }
+        e[y2 * w + x2] = ok;
+      }
+      for (y2 = 0; y2 < h; y2++) for (x2 = 0; x2 < w; x2++) {
+        if (!e[y2 * w + x2]) continue;
+        for (j2 = -r; j2 <= r; j2++) for (i2 = -r; i2 <= r; i2++) {
+          var x3 = x2 + i2, y3 = y2 + j2;
+          if (x3 >= 0 && y3 >= 0 && x3 < w && y3 < h) o[y3 * w + x3] = 1;
+        }
+      }
+      return o;
+    }
+    var best = null;
+    // 밝기 방식(A)을 먼저 쓰고, A로 못 찾을 때만 바탕색 방식(B)을 씀
+    cand.forEach(function (m0) {
+      if (best) return;
+      var m = open2(m0);
+      var blob = largestBlob(m, w, h);
+      if (blob.size < n * 0.08) return;
+      // 덩어리의 줄마다 가장 왼쪽·오른쪽 점만 모아 볼록 껍질
+      var pts = [], touch = 0;
+      for (y = 0; y < h; y++) {
+        var l = -1, r = -1;
+        for (x = 0; x < w; x++) if (blob.lab[y * w + x] === blob.id) { if (l < 0) l = x; r = x; }
+        if (l >= 0) { pts.push({ x: l, y: y }, { x: r + 1, y: y }); if (l === 0 || r === w - 1) touch++; }
+      }
+      if (y === 0 && touch) touch++;
+      var hl = hull(pts), q = hl.length >= 4 ? toQuad(hl) : null;
+      if (!q) return;
+      var area = polyArea(q), fill = blob.size / area;
+      // 사진 거의 전체(바탕이 안 보임)거나, 사각형과 모양이 너무 다르면 버림
+      if (area > n * 0.97 || area < n * 0.08 || fill < 0.8) return;
+      if (touch > h * 0.5) return;                 // 사진 양옆에 절반 넘게 붙어 있으면 바탕일 가능성이 큼
+      best = { q: q };
+    });
+    if (!best) return null;
+    var k = src.width / w;
+    return order(best.q.map(function (pt) {
+      return { x: Math.max(0, Math.min(src.width, pt.x * k)), y: Math.max(0, Math.min(src.height, pt.y * k)) };
+    }));
+  }
+
   // 시계 방향 90° × turns
   function rotate(src, turns) {
     turns = ((turns % 4) + 4) % 4;
@@ -319,6 +448,7 @@
   window.RSImaging = {
     textSideways: textSideways,
     scan: scan,
+    detectQuad: detectQuad,
     open: open, warp: warp, enhance: enhance, rotate: rotate, scaled: scaled, jpeg: jpeg, order: order, canvas: canvas
   };
 })();
