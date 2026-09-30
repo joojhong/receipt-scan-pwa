@@ -89,7 +89,7 @@
 
   function summary() {
     var p = S.prefs;
-    return '<div class="cap-sum">' + esc(p.category) + ' · ' + esc(PAY_LABEL[p.cardType] || p.cardType) + ' · ' + esc(widthLabel(p.widthMm)) + '</div>';
+    return '<div class="cap-sum">' + esc(p.category) + ' · 영수증 폭 ' + esc(widthLabel(p.widthMm)) + '</div>';
   }
 
   function draw() {
@@ -102,10 +102,7 @@
       h = header('영수증 촬영', S.saved ? '이번에 ' + S.saved + '장 저장' : '') +
         '<div class="cap-q">어떤 비용인가요?</div>' +
         '<div class="tiles">' + tiles + '</div>' +
-        '<div class="pay' + (p.saved ? '' : ' first') + '"><div class="pay-t"><small>결제 · 영수증 폭</small>' +
-          esc(PAY_LABEL[p.cardType] || p.cardType) + ' · ' + esc(widthLabel(p.widthMm)) +
-          (p.saved ? '' : '<em>처음이면 한 번 확인해 주세요</em>') + '</div>' +
-          '<button class="chg" id="payBtn" type="button">바꾸기</button></div>' +
+        '<div class="cap-q">영수증 폭</div>' + widthRow() +
         (S.error ? '<p class="err" role="alert">' + esc(S.error) + '</p>' : '') +
         (ready ? '<label class="big-cta" for="camInput">' + ICON.camera + '촬영</label>'
                : '<button class="big-cta off" id="camOff" type="button">' + ICON.camera + (S.busy ? esc(S.busy) : '촬영') + '</button>') +
@@ -156,6 +153,17 @@
     bind();
     if (S.step === 'adjust') requestAnimationFrame(layoutAdjust);
     if (S.step === 'preview') requestAnimationFrame(drawPreview);
+  }
+
+  // 영수증 폭: 보통(80) / 좁은 것(58) / 기타(직접 입력). 고른 값은 다음에도 남음
+  function widthRow() {
+    var p = S.prefs, other = WIDTHS.indexOf(p.widthMm) < 0;
+    var w = function (mm, name, bar) {
+      return '<button type="button" class="wc' + (p.widthMm === mm ? ' on' : '') + '" data-w="' + mm + '"><i style="width:' + bar + 'px"></i><span><b>' + name + '</b><small>' + mm + 'mm</small></span></button>';
+    };
+    return '<div class="wrow cap-w">' + w(80, '보통', 22) + w(58, '좁은 것', 15) +
+      '<button type="button" class="wc o' + (other ? ' on' : '') + '" data-w="other">기타</button></div>' +
+      (other ? '<div class="cap-other cap-w2"><input id="widthInput" type="number" inputmode="numeric" min="20" max="300" value="' + p.widthMm + '"> mm</div>' : '');
   }
 
   function paySheet() {
@@ -222,6 +230,7 @@
       b.onclick = function () {
         var v = b.dataset.w;
         S.prefs.widthMm = v === 'other' ? (WIDTHS.indexOf(S.prefs.widthMm) < 0 ? S.prefs.widthMm : 100) : Number(v);
+        savePrefs(S.prefs);
         draw();
       };
     });
@@ -479,7 +488,7 @@
       var item = {
         id: uuid(), email: ctx.email, blob: blob, thumb: thumb,
         meta: {
-          category: S.prefs.category, cardType: S.prefs.cardType, widthMm: S.prefs.widthMm, memo: S.memo.trim(),
+          category: S.prefs.category, cardType: '', widthMm: S.prefs.widthMm, memo: S.memo.trim(),
           capturedAt: localIso(now), month: now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0'),
           mode: S.prefs.mode, width: fin.width, height: fin.height
         }
