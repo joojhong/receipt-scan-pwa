@@ -133,3 +133,14 @@ a.banner{display:block;text-decoration:none}
 .uname{font-size:15px;font-weight:700;word-break:break-all}
 .uname.none{color:var(--sub);font-weight:600}
 .uinfo .uemail{font-size:12px;font-weight:400;color:var(--sub);margin-top:2px}
+
+/* Google 이름 비교 */
+.gname{font-size:13px;margin-top:10px;color:var(--ink)}
+.gname .none{color:var(--sub)}
+.namebox #gnameBtn{margin-top:8px;height:40px}
+.gnote{font-size:12px;color:var(--sub);margin-top:6px;line-height:1.5}
+.ugname{font-size:13px;margin-top:3px}
+.m{display:inline-block;font-size:11px;font-weight:700;border-radius:6px;padding:1px 6px;margin-left:2px}
+.m-ok{color:#0F7B3F;background:#E6F4EC}
+.m-diff{color:#8A4A06;background:#FCEFDD}
+.m-none{color:var(--sub);background:#F0EFEA;font-weight:600}
