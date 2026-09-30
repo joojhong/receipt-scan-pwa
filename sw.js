@@ -1,7 +1,7 @@
 /* 오프라인 캐시. 파일을 고치면 CACHE 이름의 숫자를 올려야 폰에 새 버전이 반영됩니다. */
-var CACHE = 'receipt-scan-v18';
+var CACHE = 'receipt-scan-v19';
 var ASSETS = [
-  './', 'index.html', 'privacy.html', 'camtest.html', 'css/app.css?v=18', 'js/config.js?v=18', 'js/auth.js?v=18', 'js/store.js?v=18', 'js/imaging.js?v=18', 'js/queue.js?v=18', 'js/capture.js?v=18', 'js/box.js?v=18', 'js/detail.js?v=18', 'js/app.js?v=18', 'manifest.webmanifest',
+  './', 'index.html', 'privacy.html', 'camtest.html', 'css/app.css?v=19', 'js/config.js?v=19', 'js/auth.js?v=19', 'js/store.js?v=19', 'js/imaging.js?v=19', 'js/queue.js?v=19', 'js/capture.js?v=19', 'js/box.js?v=19', 'js/detail.js?v=19', 'js/app.js?v=19', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'
 ];
 
