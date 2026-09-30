@@ -314,7 +314,11 @@
       ctx.rerender();
     };
     var pb = root.querySelector('#bxPdf');
-    if (pb) pb.onclick = function () { ctx.toast('A4 미리보기는 4단계 3번 작업에서 만듭니다'); };
+    if (pb) pb.onclick = function () {
+      var ids = list.filter(function (it) { return B.sel[it.id]; }).map(function (it) { return it.id; }); // 목록 순서대로
+      var leftOut = list.filter(function (it) { return it.st === '판독대기' || it.st === '확인필요' || it.st === 'upload'; }).length;
+      ctx.startPreview({ ids: ids, category: B.cat, leftOut: leftOut });
+    };
   }
 
   // ── 왼쪽으로 밀어 제외 · 길게 눌러 빠른 메뉴 ──

@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '0.8.2';
+  var APP_VERSION = '0.9.0';
   var CATEGORIES = ['경비', '접대비', '회의비', '출장비'];
   var CACHE_KEY = 'rs.cache.receipts';
 
@@ -170,6 +170,8 @@
     RSCapture.reset();
     RSBox.reset();
     RSDetail.reset();
+    RSPreview.reset();
+    state.selection = null;
     state.user = null; state.ws = null; state.receipts = []; state.error = ''; state.pending = null;
     state.admin = { list: null, loading: false, error: '', waiting: 0 };
     saveCache([]);
@@ -449,6 +451,7 @@
       isActive: function () { return currentTab() === 'box'; },
       rerender: render,
       statusAction: statusAction,
+      startPreview: function (sel) { state.selection = sel; location.hash = '#/preview'; },
       quickEdit: function (it, ch, msg) {
         editReceipt(it.id, ch, it).then(function (res) { toast(res.conflicts.length ? 'PC에서 수정된 값으로 바뀌었습니다' : msg); render(); })
           .catch(function (e) { toast(e.message || '바꾸지 못했습니다'); });
@@ -562,7 +565,30 @@
     t.lastChild.onclick = function () { clearTimeout(undoTimer); t.hidden = true; fn(); };
   }
 
+  // ── 화면: A4 미리보기 ──
+  function renderPreview(root) {
+    if (!state.user || state.pending) return renderHome(root);
+    var sel = state.selection;
+    var items = sel ? sel.ids.map(findItem).filter(function (it) { return it && it.st === '보관중'; }) : [];
+    RSPreview.render(root, {
+      selection: sel ? { ids: items.map(function (it) { return it.id; }), items: items, category: sel.category, leftOut: sel.leftOut } : null,
+      userName: state.user.name || (state.user.email || '').split('@')[0],
+      toast: toast,
+      back: function () { location.hash = '#/box'; },
+      isActive: function () { return currentTab() === 'preview'; },
+      rerender: render,
+      imageSize: function (fileId) { return RSStore.imageSize(fileId); },
+      photoBlob: async function (r) {
+        var b = RSBox.localBlob(r.id);
+        if (b) return b;
+        if (!r.fileId) throw new Error('원본 파일 없음');
+        return RSStore.download(r.fileId);
+      }
+    });
+  }
+
   var ROUTES = {
+    preview: renderPreview,
     detail: renderDetail,
     capture: renderCapture,
     admin: renderAdmin,
@@ -582,7 +608,7 @@
     root.innerHTML = '';
     ROUTES[tab](root);
     var nav = document.querySelector('.tabbar');
-    nav.hidden = !state.user || !!state.pending || tab === 'admin' || tab === 'capture' || tab === 'detail';
+    nav.hidden = !state.user || !!state.pending || tab === 'admin' || tab === 'capture' || tab === 'detail' || tab === 'preview';
     document.querySelectorAll('.tabbar a').forEach(function (a) {
       if (a.dataset.tab === tab) a.setAttribute('aria-current', 'page');
       else a.removeAttribute('aria-current');

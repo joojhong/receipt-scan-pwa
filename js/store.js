@@ -225,6 +225,13 @@
       };
   }
 
+  // 사진 크기(가로·세로 px). Drive가 아직 계산하지 않았으면 null
+  async function imageSize(fileId) {
+    var d = await api(DRIVE + '/' + fileId + '?fields=imageMediaMetadata(width,height)');
+    var m = d && d.imageMediaMetadata;
+    return m && m.width > 0 && m.height > 0 ? { w: m.width, h: m.height } : null;
+  }
+
   // Drive 파일 내용 받기(썸네일 만들 때 씀)
   async function download(fileId) {
     var token = await RSAuth.getToken();
@@ -337,6 +344,7 @@
     ensureWorkspace: ensureWorkspace,
     readReceipts: readReceipts,
     download: download,
+    imageSize: imageSize,
     findRow: findRow,
     writeCells: writeCells,
     parseRow: function (r) { return rowToObj(r, 0); },
