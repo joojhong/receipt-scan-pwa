@@ -71,15 +71,15 @@
   function sortKey(it) { return (it.txAt || it.capturedAt || '') + '|' + it.id; }
 
   // ── 목록 만들기: 시트 + 폰에만 있는 것 ──
-  function items() {
+  function normSt(st) { return ({ '판독대기': 1, '확인필요': 1, '보관중': 1, '청구완료': 1, '제외': 1 })[st] ? st : '판독대기'; }
+  function items(receipts, email) {
+    receipts = receipts || ctx.receipts; email = email || ctx.email;
     var seen = {}, out = [];
-    (ctx.receipts || []).forEach(function (r) {
+    (receipts || []).forEach(function (r) {
       seen[r.id] = 1;
-      var st = r.status;
-      if (!({ '판독대기': 1, '확인필요': 1, '보관중': 1, '청구완료': 1, '제외': 1 })[st]) st = '판독대기';
-      out.push(Object.assign({}, r, { st: st }));
+      out.push(Object.assign({}, r, { st: normSt(r.status) }));
     });
-    if (localEmail === ctx.email) {
+    if (localEmail === email) {
       local.forEach(function (q) {
         if (seen[q.id] || q.stage === 'done') return;
         var m = q.meta || {};
@@ -134,6 +134,8 @@
       body = emptyState();
     } else if (B.tab === 'done') {
       body = doneGroups(list);
+    } else if (B.cat === '출장비') {
+      body = tripGroups(list, checkable);
     } else {
       body = '<div class="bx-list">' + list.map(row).join('') + '</div>';
     }
@@ -210,7 +212,7 @@
     if (B.all && it.month) badges.push('<span class="bdg b-mon">' + Number(it.month.slice(5, 7)) + '월</span>');
     var th = thumbs[it.id];
     var img = isFile ? '<span class="bx-th file">' + ICON.doc + '</span>' :
-      '<span class="bx-th" data-th="' + esc(it.id) + '">' + (th && th !== 'fail' ? '<img src="' + th + '" alt="">' : '') + '</span>';
+      '<span class="bx-th" data-th="' + esc(it.id) + '">' + (th && th !== 'fail' ? '<img src="' + th + '" alt=""' + (it.rot ? ' class="r' + it.rot + '"' : '') + '>' : '') + '</span>';
     return '<div class="bx-row' + (on ? ' sel' : '') + '" data-id="' + esc(it.id) + '">' +
       (B.tab === 'keep' ? '<button type="button" class="bx-ck' + (on ? ' on' : '') + (canCheck ? '' : ' off') + '" data-ck="' + esc(it.id) + '"' +
         (canCheck ? ' aria-label="선택"' : ' aria-label="아직 선택할 수 없음" aria-disabled="true"') + '>' + ICON.check + '</button>' : '') +
@@ -220,6 +222,28 @@
         (badges.length ? '<div class="bx-b">' + badges.join('') + '</div>' : '') + '</div>' +
       '<div class="bx-amt">' + (it.hasAmount ? won(it.amount) + '<small>원</small>' : '—') + '</div>' +
     '</div>';
+  }
+
+  // 출장비: 출장일별로 묶음(같은 출장의 영수증을 한 번에 고름)
+  function tripGroups(list, checkable) {
+    var groups = {}, order = [];
+    list.forEach(function (it) {
+      var k = it.tripDate || '';
+      if (!groups[k]) { groups[k] = []; order.push(k); }
+      groups[k].push(it);
+    });
+    order.sort(function (a, b) { return !a ? 1 : !b ? -1 : a < b ? -1 : 1; });
+    return order.map(function (k) {
+      var g = groups[k], sum = 0, ids = g.filter(function (it) { return checkable[it.id]; }).map(function (it) { return it.id; });
+      g.forEach(function (it) { sum += it.hasAmount ? it.amount : 0; });
+      var allOn = ids.length && ids.every(function (id) { return B.sel[id]; });
+      var p = /^(\d{4})-(\d{2})-(\d{2})/.exec(k);
+      var title = p ? Number(p[2]) + '월 ' + Number(p[3]) + '일 출장' : '출장일 없음';
+      return '<div class="bx-group"><div class="bx-gh"><b>' + title + '</b> · ' + g.length + '건 · ' + won(sum) + '원' +
+        (ids.length ? '<button type="button" class="bx-gsel' + (allOn ? ' on' : '') + '" data-gsel="' + esc(ids.join(',')) + '">' + (allOn ? '선택 해제' : '이 출장 전체 선택') + '</button>' : '') +
+        (p ? '' : '<span class="bx-ghint">상세에서 출장일을 적어 주세요</span>') + '</div>' +
+        '<div class="bx-list">' + g.map(row).join('') + '</div></div>';
+    }).join('');
   }
 
   // 청구완료: 청구 PDF별로 묶음
@@ -267,12 +291,20 @@
         ctx.rerender();
       };
     });
-    root.querySelectorAll('.bx-row[data-id]').forEach(function (r) {
-      r.onclick = function () {
-        var it = list.find(function (x) { return x.id === r.dataset.id; });
-        if (it && it.st === 'upload') { explain(it); return; }
-        ctx.toast('영수증 상세(값 입력)는 4단계 2번 작업에서 만듭니다');
+    root.querySelectorAll('[data-gsel]').forEach(function (b) {
+      b.onclick = function () {
+        var ids = b.dataset.gsel.split(','), on = ids.every(function (id) { return B.sel[id]; });
+        ids.forEach(function (id) { if (on) delete B.sel[id]; else B.sel[id] = 1; });
+        ctx.rerender();
       };
+    });
+    root.querySelectorAll('.bx-row[data-id]').forEach(function (r) {
+      var it = list.find(function (x) { return x.id === r.dataset.id; });
+      r.onclick = function () {
+        if (r.dataset.swiped) { delete r.dataset.swiped; return; }
+        if (it) ctx.go('#/detail?id=' + encodeURIComponent(it.id));
+      };
+      if (it) gestures(r, it);
     });
     var ab = root.querySelector('#bxAll');
     if (ab) ab.onclick = function () {
@@ -285,6 +317,64 @@
     if (pb) pb.onclick = function () { ctx.toast('A4 미리보기는 4단계 3번 작업에서 만듭니다'); };
   }
 
+  // ── 왼쪽으로 밀어 제외 · 길게 눌러 빠른 메뉴 ──
+  function gestures(r, it) {
+    var sx = 0, sy = 0, dx = 0, timer = null, moved = false, swiping = false;
+    var canSwipe = KEEP[it.st] && it.st !== 'upload' && B.tab === 'keep';
+    r.addEventListener('touchstart', function (e) {
+      var t = e.touches[0]; sx = t.clientX; sy = t.clientY; dx = 0; moved = false; swiping = false;
+      timer = setTimeout(function () { timer = null; if (!moved) { r.dataset.swiped = '1'; quickMenu(it); } }, 550);
+    }, { passive: true });
+    r.addEventListener('touchmove', function (e) {
+      var t = e.touches[0], mx = t.clientX - sx, my = t.clientY - sy;
+      if (Math.abs(mx) > 8 || Math.abs(my) > 8) { moved = true; if (timer) { clearTimeout(timer); timer = null; } }
+      if (!canSwipe) return;
+      if (!swiping && Math.abs(mx) > 14 && Math.abs(mx) > Math.abs(my) * 1.5 && mx < 0) swiping = true;
+      if (swiping) { dx = Math.min(0, mx); r.style.transform = 'translateX(' + dx + 'px)'; r.classList.toggle('swipe-go', dx < -90); }
+    }, { passive: true });
+    r.addEventListener('touchend', function () {
+      if (timer) { clearTimeout(timer); timer = null; }
+      if (swiping) {
+        r.dataset.swiped = '1';
+        if (dx < -90) { r.style.transform = 'translateX(-100%)'; ctx.statusAction('exclude', it); }
+        else { r.style.transform = ''; r.classList.remove('swipe-go'); }
+      }
+    });
+    r.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  }
+
+  function quickMenu(it) {
+    if (it.st === 'upload') { explain(it); return; }
+    var ro = it.st === '청구완료';
+    var wrap = document.createElement('div');
+    wrap.className = 'sheet-backdrop';
+    var cats = CATEGORIES.filter(function (c) { return c !== it.category; });
+    wrap.innerHTML = '<div class="sheet" role="dialog" aria-label="빠른 메뉴"><div class="grab"></div>' +
+      '<div class="sheet-email"><b>' + esc(it.merchant || '영수증') + '</b> · ' + esc(it.category) + '</div>' +
+      (ro ? '<div class="sheet-item sub">청구완료된 영수증은 상세에서 [보관중으로 되돌리기] 후 고칠 수 있습니다.</div>' :
+        cats.map(function (c) { return '<button class="sheet-item" data-cat="' + c + '" type="button">' + c + '(으)로 구분 바꾸기</button>'; }).join('') +
+        '<div class="sheet-row"><span>귀속 월</span><input type="month" id="qmMonth" value="' + esc(it.month) + '"><button class="mini ok" id="qmMonthOk" type="button">바꾸기</button></div>' +
+        (it.st === '제외' ? '<button class="sheet-item" id="qmRestore" type="button">복원</button>' : '<button class="sheet-item danger" id="qmExclude" type="button">제외</button>')) +
+      '<button class="sheet-item sub" id="qmClose" type="button">닫기</button></div>';
+    document.body.appendChild(wrap);
+    var close = function () { wrap.remove(); };
+    wrap.onclick = function (e) { if (e.target === wrap) close(); };
+    wrap.querySelector('#qmClose').onclick = close;
+    wrap.querySelectorAll('[data-cat]').forEach(function (b) {
+      b.onclick = function () { close(); ctx.quickEdit(it, { category: b.dataset.cat }, b.dataset.cat + '(으)로 바꿨습니다'); };
+    });
+    var mo = wrap.querySelector('#qmMonthOk');
+    if (mo) mo.onclick = function () {
+      var v = wrap.querySelector('#qmMonth').value;
+      if (!/^\d{4}-\d{2}$/.test(v)) { ctx.toast('귀속 월을 골라 주세요'); return; }
+      close(); if (v !== it.month) ctx.quickEdit(it, { month: v }, '귀속 월을 ' + Number(v.slice(5)) + '월로 바꿨습니다');
+    };
+    var ex = wrap.querySelector('#qmExclude');
+    if (ex) ex.onclick = function () { close(); ctx.statusAction('exclude', it); };
+    var rs = wrap.querySelector('#qmRestore');
+    if (rs) rs.onclick = function () { close(); ctx.statusAction('restore', it); };
+  }
+
   // 체크할 수 없는 항목을 눌렀을 때 이유
   function explain(it) {
     if (!it) return;
@@ -294,16 +384,18 @@
   }
 
   // ── 썸네일 ──
+  var rotOf = {};
   function setThumb(id, url) {
     thumbs[id] = url;
     var box = document.querySelector('.bx-th[data-th="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
-    if (box && url !== 'fail') box.innerHTML = '<img src="' + url + '" alt="">';
+    if (box && url !== 'fail') box.innerHTML = '<img src="' + url + '" alt=""' + (rotOf[id] ? ' class="r' + rotOf[id] + '"' : '') + '>';
   }
 
   function requestThumbs(list) {
     var byLocal = {};
     local.forEach(function (q) { if (q.thumb) byLocal[q.id] = q.thumb; });
     list.forEach(function (it) {
+      rotOf[it.id] = it.rot || 0;
       if (it.kind === '첨부' || thumbs[it.id] || thumbQueued[it.id]) return;
       if (byLocal[it.id]) { thumbs[it.id] = URL.createObjectURL(byLocal[it.id]); setThumb(it.id, thumbs[it.id]); return; }
       if (!it.fileId) return;
@@ -357,6 +449,10 @@
 
   window.RSBox = {
     render: render,
+    itemById: function (id, receipts, email) {
+      return items(receipts || [], email).find(function (x) { return x.id === id; }) || null;
+    },
+    localBlob: function (id) { var q = local.find(function (x) { return x.id === id; }); return q && q.blob ? q.blob : null; },
     reset: function () {
       B = { cat: null, tab: 'keep', all: false, sel: {} };
       Object.keys(thumbs).forEach(function (k) { if (thumbs[k] !== 'fail') URL.revokeObjectURL(thumbs[k]); });

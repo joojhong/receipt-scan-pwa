@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '0.7.0';
+  var APP_VERSION = '0.8.0';
   var CATEGORIES = ['경비', '접대비', '회의비', '출장비'];
   var CACHE_KEY = 'rs.cache.receipts';
 
@@ -169,6 +169,7 @@
     await RSAuth.logout();
     RSCapture.reset();
     RSBox.reset();
+    RSDetail.reset();
     state.user = null; state.ws = null; state.receipts = []; state.error = ''; state.pending = null;
     state.admin = { list: null, loading: false, error: '', waiting: 0 };
     saveCache([]);
@@ -446,13 +447,123 @@
       refresh: function () { refresh(); kickQueue(); },
       go: function (h) { location.hash = h; },
       isActive: function () { return currentTab() === 'box'; },
-      rerender: render
+      rerender: render,
+      statusAction: statusAction,
+      quickEdit: function (it, ch, msg) {
+        editReceipt(it.id, ch, it).then(function (res) { toast(res.conflicts.length ? 'PC에서 수정된 값으로 바뀌었습니다' : msg); render(); })
+          .catch(function (e) { toast(e.message || '바꾸지 못했습니다'); });
+      }
     });
     // 구분을 주소에 남기지 않음(다시 그릴 때 사용자가 고른 구분이 덮어써지지 않게)
     if (q.cat) history.replaceState(null, '', '#/box');
   }
 
+  // ── 화면: 영수증 상세 ──
+  function findItem(id) { return RSBox.itemById(id, state.receipts, state.user.email); }
+  function renderDetail(root) {
+    if (!state.user || state.pending) return renderHome(root);
+    var id = query().id || '';
+    RSDetail.render(root, {
+      receipt: findItem(id),
+      offline: state.offline || !navigator.onLine,
+      toast: toast,
+      back: function () { location.hash = '#/box'; },
+      isActive: function () { return currentTab() === 'detail'; },
+      rerender: render,
+      edit: editReceipt,
+      statusAction: statusAction,
+      retryUpload: kickQueue,
+      photoBlob: async function (r) {
+        var b = RSBox.localBlob(r.id);
+        if (b) return b;
+        if (!r.fileId) throw new Error('원본 파일 없음');
+        return RSStore.download(r.fileId);
+      }
+    });
+  }
+
+  // 영수증 값 고치기: 바뀐 칸만 씀. orig = 화면을 열 때의 값. 그사이 PC에서 같은 칸이 바뀌었으면 PC 값을 남김
+  var FIELD_LABEL = { category: '구분', txAt: '거래일시', amount: '금액', merchant: '가맹점명', address: '가맹점 주소', desc: '내역', memo: '메모',
+    month: '귀속 월', widthMm: '영수증 폭', rot: '회전', guest: '접대상대방', topic: '회의 내용', account: '계정', fuel: '주유량', work: '업무내용',
+    car: '업무용 차량', from: '출발지', to: '도착지', km: '운행거리', tripDate: '출장일', attendees: '참석자', status: '상태', reason: '확인 사유', pdfId: '청구 PDF', claimedAt: '청구일시' };
+  function cmpVal(r, k) {
+    if (k === 'amount') return r.hasAmount ? String(r.amount) : '';
+    if (k === 'rot') return String((r.rot || 0) * 90);
+    if (k === 'txAt') return String(r.txAt || '').slice(0, 16);
+    if (k === 'tripDate') return String(r.tripDate || '').slice(0, 10);
+    if (k === 'widthMm') return String(r.widthMm || '');
+    return String(r[k] == null ? '' : r[k]);
+  }
+  async function editReceipt(id, ch, orig) {
+    if (!navigator.onLine) throw new Error('오프라인입니다. 온라인에서 다시 저장해 주세요');
+    if (!state.ws) throw new Error('아직 시트를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요');
+    var found = await RSStore.findRow(state.ws, id);
+    if (!found) throw new Error('시트에서 이 영수증을 찾지 못했습니다. PC에서 줄이 지워졌을 수 있습니다');
+    var cur = RSStore.parseRow(found.values), conflicts = [], write = {};
+    Object.keys(ch).forEach(function (k) {
+      if (orig && cmpVal(cur, k) !== cmpVal(orig, k)) { conflicts.push(FIELD_LABEL[k] || k); return; }
+      write[k] = ch[k];
+    });
+    // 상태가 PC에서 바뀌었으면 상태에 딸린 칸도 쓰지 않음
+    if (write.status === undefined && ch.status !== undefined) { delete write.reason; delete write.pdfId; delete write.claimedAt; }
+    if (Object.keys(write).length) {
+      write.updatedAt = localIsoNow();
+      await RSStore.writeCells(state.ws, found.row, write);
+    }
+    var again = await RSStore.findRow(state.ws, id);
+    if (again) {
+      var nr = RSStore.parseRow(again.values);
+      state.receipts = state.receipts.map(function (x) { return x.id === id ? nr : x; });
+      if (!state.receipts.some(function (x) { return x.id === id; })) state.receipts.push(nr);
+      saveCache(state.receipts);
+    }
+    return { conflicts: conflicts };
+  }
+  function localIsoNow() {
+    var d = new Date(), p = function (n) { return String(n).padStart(2, '0'); };
+    var off = -d.getTimezoneOffset(), sign = off >= 0 ? '+' : '-'; off = Math.abs(off);
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()) + sign + p(Math.floor(off / 60)) + ':' + p(off % 60);
+  }
+
+  // 제외 · 복원 · 보관중으로 되돌리기
+  async function statusAction(kind, it) {
+    var ch, msg;
+    if (kind === 'exclude') { ch = { status: '제외' }; msg = '제외했습니다'; }
+    else if (kind === 'restore') { ch = { status: it.txAt && it.hasAmount ? '보관중' : (it.reason ? '확인필요' : '판독대기') }; msg = '복원했습니다'; }
+    else { ch = { status: '보관중', pdfId: '', claimedAt: '' }; msg = '보관중으로 되돌렸습니다'; }
+    var prev = it.status;
+    try {
+      var res = await editReceipt(it.id, ch, it);
+      render();
+      if (res.conflicts.length) { toast('PC에서 상태가 바뀌어 있어 그대로 두었습니다'); return; }
+      if (kind === 'exclude') {
+        undoToast(msg, function () {
+          var now = findItem(it.id);
+          editReceipt(it.id, { status: prev }, now).then(function () { toast('되돌렸습니다'); render(); })
+            .catch(function (e) { toast(e.message || '되돌리지 못했습니다'); });
+        });
+      } else toast(msg);
+    } catch (e) {
+      toast(e.message || '처리하지 못했습니다');
+      render();
+      throw e;
+    }
+  }
+
+  var undoTimer;
+  function undoToast(msg, fn) {
+    var t = document.getElementById('utoast');
+    if (!t) { t = document.createElement('div'); t.id = 'utoast'; t.setAttribute('role', 'status'); document.getElementById('app').appendChild(t); }
+    t.innerHTML = '<span></span><button type="button">되돌리기</button>';
+    t.firstChild.textContent = msg;
+    t.hidden = false;
+    clearTimeout(undoTimer);
+    undoTimer = setTimeout(function () { t.hidden = true; }, 5000);
+    t.lastChild.onclick = function () { clearTimeout(undoTimer); t.hidden = true; fn(); };
+  }
+
   var ROUTES = {
+    detail: renderDetail,
     capture: renderCapture,
     admin: renderAdmin,
     home: renderHome,
@@ -471,7 +582,7 @@
     root.innerHTML = '';
     ROUTES[tab](root);
     var nav = document.querySelector('.tabbar');
-    nav.hidden = !state.user || !!state.pending || tab === 'admin' || tab === 'capture';
+    nav.hidden = !state.user || !!state.pending || tab === 'admin' || tab === 'capture' || tab === 'detail';
     document.querySelectorAll('.tabbar a').forEach(function (a) {
       if (a.dataset.tab === tab) a.setAttribute('aria-current', 'page');
       else a.removeAttribute('aria-current');

@@ -25,6 +25,17 @@
   function savePrefs(p) {
     try { localStorage.setItem(PREF_KEY, JSON.stringify({ cardType: p.cardType, widthMm: p.widthMm, mode: p.mode === 'orig' ? 'color' : p.mode, md: 2 })); } catch (e) { /* 무시 */ }
   }
+  // 출장일: 최근 7일 안에 쓴 출장일이 있으면 그 값, 없으면 오늘(같은 출장 영수증을 여러 장 찍을 때 다시 고르지 않게)
+  var TRIP_KEY = 'rs.capture.trip';
+  function todayStr() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  function loadTrip() {
+    try {
+      var t = JSON.parse(localStorage.getItem(TRIP_KEY) || 'null');
+      if (t && /^\d{4}-\d{2}-\d{2}$/.test(t.date) && Date.now() - t.usedAt < 7 * 86400000) return t.date;
+    } catch (e) { /* 무시 */ }
+    return todayStr();
+  }
+  function saveTrip(date) { try { localStorage.setItem(TRIP_KEY, JSON.stringify({ date: date, usedAt: Date.now() })); } catch (e) { /* 무시 */ } }
   var PAY_LABEL = { '카드(개인)': '개인 카드', '카드(법인)': '법인 카드', '현금': '현금' };
   function widthLabel(w) { return w === 80 ? '보통(80mm)' : w === 58 ? '좁은 것(58mm)' : '기타(' + w + 'mm)'; }
 
@@ -59,7 +70,7 @@
   function fresh() {
     return {
       el: null, prefs: loadPrefs(), step: 'select', sheet: false, upInfo: '', files: [], fileIndex: 0, saved: 0,
-      work: null, corners: null, warped: null, rot: 0, memo: '', busy: '', error: '', drag: -1, warpFailed: false
+      work: null, corners: null, warped: null, rot: 0, memo: '', busy: '', error: '', drag: -1, warpFailed: false, tripDate: loadTrip()
     };
   }
 
@@ -89,7 +100,8 @@
 
   function summary() {
     var p = S.prefs;
-    return '<div class="cap-sum">' + esc(p.category) + ' · 영수증 폭 ' + esc(widthLabel(p.widthMm)) + '</div>';
+    return '<div class="cap-sum">' + esc(p.category) + ' · 영수증 폭 ' + esc(widthLabel(p.widthMm)) +
+      (p.category === '출장비' && S.tripDate ? ' · 출장일 ' + Number(S.tripDate.slice(5, 7)) + '/' + Number(S.tripDate.slice(8)) : '') + '</div>';
   }
 
   function draw() {
@@ -103,6 +115,8 @@
         '<div class="cap-q">어떤 비용인가요?</div>' +
         '<div class="tiles">' + tiles + '</div>' +
         '<div class="cap-q">영수증 폭</div>' + widthRow() +
+        (p.category === '출장비' ? '<div class="cap-q">출장일 <span class="cap-qs">보통 출장 첫째 날 · 같은 출장끼리 묶는 데 씁니다</span></div>' +
+          '<div class="cap-other cap-w2 cap-trip"><input id="tripInput" type="date" max="' + todayStr() + '" value="' + esc(S.tripDate) + '"></div>' : '') +
         (S.error ? '<p class="err" role="alert">' + esc(S.error) + '</p>' : '') +
         (ready ? '<label class="big-cta" for="camInput">' + ICON.camera + '촬영</label>'
                : '<button class="big-cta off" id="camOff" type="button">' + ICON.camera + (S.busy ? esc(S.busy) : '촬영') + '</button>') +
@@ -234,6 +248,8 @@
         draw();
       };
     });
+    var ti = $('tripInput');
+    if (ti) ti.onchange = function () { if (/^\d{4}-\d{2}-\d{2}$/.test(ti.value)) S.tripDate = ti.value; else ti.value = S.tripDate; };
     var ok = $('payOk');
     if (ok) ok.onclick = closeSheet;
     var wi = $('widthInput');
@@ -490,10 +506,12 @@
         meta: {
           category: S.prefs.category, cardType: '', widthMm: S.prefs.widthMm, memo: S.memo.trim(),
           capturedAt: localIso(now), month: now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0'),
-          mode: S.prefs.mode, width: fin.width, height: fin.height
+          mode: S.prefs.mode, width: fin.width, height: fin.height,
+          tripDate: S.prefs.category === '출장비' ? S.tripDate : ''
         }
       };
       await RSQueue.add(item);
+      if (item.meta.tripDate) saveTrip(item.meta.tripDate);
       S.saved++;
       ctx.onSaved();
     } catch (e) {

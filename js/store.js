@@ -9,11 +9,19 @@
   var SHEETS = 'https://sheets.googleapis.com/v4/spreadsheets';
   var FOLDER = 'application/vnd.google-apps.folder';
   var SHEET = 'application/vnd.google-apps.spreadsheet';
-  var SCHEMA_VERSION = 3; // 2: 카드사 열(F) 추가, 3: 카드 구분 열(G, 법인카드/개인카드) 추가
+  var SCHEMA_VERSION = 4; // 2: 카드사 열(F) 추가, 3: 카드 구분 열(G) 추가, 4: 맨 오른쪽 W~AH열(회전·구분별 추가 입력) 추가
 
   // 열 순서는 "데이터·API 스펙" 탭 표 순서(A~V)
   var RECEIPT_HEADERS = ['ID', '유형', '촬영일시', '구분', '상태', '카드사', '카드 구분', '거래일시', '귀속 월', '금액', '가맹점명', '가맹점 주소',
-    '내역', '메모', '영수증 폭', '판독 신뢰도', '확인 사유', '판독 시도', '원본 파일 ID', '청구 PDF ID', '청구일시', '앱 수정일시'];
+    '내역', '메모', '영수증 폭', '판독 신뢰도', '확인 사유', '판독 시도', '원본 파일 ID', '청구 PDF ID', '청구일시', '앱 수정일시',
+    // 4판에서 추가(W~AH): 기존 열은 움직이지 않고 오른쪽에 붙임
+    '회전', '출장일', '접대상대방', '회의 내용', '계정', '주유량(L)', '업무내용', '업무용 차량', '출발지', '도착지', '운행거리(km)', '참석자'];
+  var LAST_COL = 'AH';
+  // 열 번호(0부터). 상세 화면 저장에서 씀
+  var F = { category: 3, status: 4, card: 5, cardType: 6, txAt: 7, month: 8, amount: 9, merchant: 10, address: 11, desc: 12, memo: 13,
+    widthMm: 14, reason: 16, pdfId: 19, claimedAt: 20, updatedAt: 21, rot: 22, tripDate: 23, guest: 24, topic: 25, account: 26,
+    fuel: 27, work: 28, car: 29, from: 30, to: 31, km: 32, attendees: 33 };
+  var DATE_FIELDS = { txAt: 1, tripDate: 1 }; // 시트에서 날짜로 보이게(PC에서 정렬·필터 가능) 입력
   var BUDGET_HEADERS = ['ID', '적용 월', '구분', '유형', '이월 방식', '금액', '메모', '앱 수정일시'];
   var COL = { id: 0, kind: 1, capturedAt: 2, category: 3, status: 4, card: 5, cardType: 6, txAt: 7, month: 8, amount: 9 };
 
@@ -80,9 +88,9 @@
       method: 'POST', json: {
         valueInputOption: 'RAW',
         data: [
-          { range: '영수증!A1:V1', values: [RECEIPT_HEADERS] },
+          { range: '영수증!A1:V1', values: [RECEIPT_HEADERS.slice(0, 22)] },
           { range: '예산!A1:H1', values: [BUDGET_HEADERS] },
-          { range: '메타!A1:B1', values: [['스키마 버전', SCHEMA_VERSION]] }
+          { range: '메타!A1:B1', values: [['스키마 버전', 3]] } // 나머지 열은 migrate가 붙임
         ]
       }
     });
@@ -101,6 +109,7 @@
     var info = await api(SHEETS + '/' + sheetId + '?fields=sheets.properties');
     var tab = info.sheets.find(function (s) { return s.properties.title === '영수증'; });
     if (!tab) return;
+    if (ver >= 3) { await addTailColumns(sheetId, tab); return; }
     for (var i = 0; i < MIGRATIONS.length; i++) {
       var mg = MIGRATIONS[i];
       if (ver >= mg.to) continue;
@@ -121,6 +130,24 @@
       });
       ver = mg.to;
     }
+    await addTailColumns(sheetId, tab);
+  }
+
+  // 4판: 맨 오른쪽에 W~AH 열 머리글을 붙임(칸이 모자라면 열을 늘림). 기존 데이터는 그대로
+  async function addTailColumns(sheetId, tab) {
+    var need = RECEIPT_HEADERS.length;
+    var have = (tab.properties.gridProperties || {}).columnCount || 26;
+    if (have < need) {
+      await api(SHEETS + '/' + sheetId + ':batchUpdate', {
+        method: 'POST', json: { requests: [{ appendDimension: { sheetId: tab.properties.sheetId, dimension: 'COLUMNS', length: need - have } }] }
+      });
+    }
+    await api(SHEETS + '/' + sheetId + '/values:batchUpdate', {
+      method: 'POST', json: { valueInputOption: 'RAW', data: [
+        { range: '영수증!W1:' + LAST_COL + '1', values: [RECEIPT_HEADERS.slice(22)] },
+        { range: '메타!B1', values: [[SCHEMA_VERSION]] }
+      ] }
+    });
   }
 
   // 로그인 직후 한 번: 폴더·시트 준비
@@ -152,8 +179,11 @@
 
   // 영수증 탭 전체 읽기 → [{id, category, status, month, amount, …}]
   async function readReceipts(ws) {
-    var d = await api(SHEETS + '/' + ws.sheetId + '/values/' + encodeURIComponent('영수증!A2:V') + '?valueRenderOption=UNFORMATTED_VALUE');
-    return (d.values || []).filter(function (r) { return r[COL.id]; }).map(function (r, i) {
+    var d = await api(SHEETS + '/' + ws.sheetId + '/values/' + encodeURIComponent('영수증!A2:' + LAST_COL) + '?valueRenderOption=UNFORMATTED_VALUE');
+    return (d.values || []).filter(function (r) { return r[COL.id]; }).map(rowToObj);
+  }
+
+  function rowToObj(r, i) {
       var amt = r[COL.amount];
       if (typeof amt === 'string') amt = amt.trim() === '' ? NaN : Number(amt.replace(/[^\d.-]/g, ''));
       if (amt === undefined || amt === '') amt = NaN;
@@ -178,9 +208,21 @@
         reason: String(r[16] || ''),
         fileId: String(r[18] || ''),
         pdfId: String(r[19] || ''),
-        claimedAt: serialToIso(r[20])
+        claimedAt: serialToIso(r[20]),
+        rot: ((Math.round(Number(r[F.rot]) / 90) % 4) + 4) % 4 || 0,   // 회전(0~3 = 0°·90°·180°·270°)
+        tripDate: serialToIso(r[F.tripDate]).slice(0, 10),
+        guest: String(r[F.guest] || ''),
+        topic: String(r[F.topic] || ''),
+        account: String(r[F.account] || ''),
+        fuel: r[F.fuel] === undefined || r[F.fuel] === '' ? '' : String(r[F.fuel]),
+        work: String(r[F.work] || ''),
+        car: String(r[F.car] || ''),
+        from: String(r[F.from] || ''),
+        to: String(r[F.to] || ''),
+        km: r[F.km] === undefined || r[F.km] === '' ? '' : String(r[F.km]),
+        address: String(r[F.address] || ''),
+        attendees: String(r[F.attendees] || '')
       };
-    });
   }
 
   // Drive 파일 내용 받기(썸네일 만들 때 씀)
@@ -253,8 +295,37 @@
     row[17] = 0;                     // 판독 시도
     row[18] = r.fileId;              // 원본 파일 ID
     row[21] = r.updatedAt;           // 앱 수정일시
+    row[F.rot] = 0;
+    row[F.tripDate] = r.tripDate || '';
     await api(SHEETS + '/' + ws.sheetId + '/values/' + encodeURIComponent('영수증!A1') + ':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS', {
       method: 'POST', json: { values: [row] } });
+  }
+
+  // ── 상세 화면 저장 ──
+  function colName(i) { var s = ''; i++; while (i > 0) { var m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; }
+
+  // 영수증 ID로 지금 줄 번호와 그 줄 값을 찾음(PC에서 줄을 지우거나 정렬해도 맞는 줄에 쓰도록 저장 때마다 찾음)
+  async function findRow(ws, id) {
+    var d = await api(SHEETS + '/' + ws.sheetId + '/values/' + encodeURIComponent('영수증!A2:A'));
+    var list = d.values || [];
+    for (var i = 0; i < list.length; i++) if (list[i][0] === id) {
+      var n = i + 2;
+      var r = await api(SHEETS + '/' + ws.sheetId + '/values/' + encodeURIComponent('영수증!A' + n + ':' + LAST_COL + n) + '?valueRenderOption=UNFORMATTED_VALUE');
+      return { row: n, values: (r.values && r.values[0]) || [] };
+    }
+    return null;
+  }
+
+  // 바뀐 칸만 씀. changes = { 필드키: 값 }. 날짜 칸은 시트가 날짜로 알아보게(USER_ENTERED), 나머지는 글자 그대로(RAW)
+  async function writeCells(ws, row, changes) {
+    var raw = [], dates = [];
+    Object.keys(changes).forEach(function (k) {
+      if (F[k] === undefined) return;
+      var cell = { range: '영수증!' + colName(F[k]) + row, values: [[changes[k]]] };
+      (DATE_FIELDS[k] && changes[k] !== '' ? dates : raw).push(cell);
+    });
+    if (raw.length) await api(SHEETS + '/' + ws.sheetId + '/values:batchUpdate', { method: 'POST', json: { valueInputOption: 'RAW', data: raw } });
+    if (dates.length) await api(SHEETS + '/' + ws.sheetId + '/values:batchUpdate', { method: 'POST', json: { valueInputOption: 'USER_ENTERED', data: dates } });
   }
 
   window.RSStore = {
@@ -266,6 +337,10 @@
     ensureWorkspace: ensureWorkspace,
     readReceipts: readReceipts,
     download: download,
+    findRow: findRow,
+    writeCells: writeCells,
+    parseRow: function (r) { return rowToObj(r, 0); },
+    FIELDS: F,
     workspace: loadWs,
     sheetUrl: function (ws) { return 'https://docs.google.com/spreadsheets/d/' + ws.sheetId + '/edit'; },
     folderUrl: function (ws) { return 'https://drive.google.com/drive/folders/' + ws.rootId; }
