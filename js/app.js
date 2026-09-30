@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '0.5.2';
+  var APP_VERSION = '0.5.3';
   var CATEGORIES = ['경비', '접대비', '회의비', '출장비'];
   var CACHE_KEY = 'rs.cache.receipts';
 
@@ -335,12 +335,6 @@
     var d = new Date(iso);
     return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
   }
-  // 직원이 적은 이름과 Google 계정 이름 비교(띄어쓰기 무시, 한쪽이 다른 쪽을 포함하면 일치로 봄: 김철수 ↔ 김철수 대리)
-  function matchTag(name, gname) {
-    var a = String(name || '').replace(/\s+/g, '').toLowerCase(), b = String(gname || '').replace(/\s+/g, '').toLowerCase();
-    if (!a || !b) return '';
-    return (a.indexOf(b) >= 0 || b.indexOf(a) >= 0) ? '<span class="m m-ok">일치</span>' : '<span class="m m-diff">다름</span>';
-  }
   function renderAdmin(root) {
     if (!RSAuth.isAdmin()) {
       // 앱을 막 열어 로그인 확인 중이면 잠시 기다림
@@ -358,7 +352,7 @@
       }
       return '<div class="urow">' +
         '<div class="uinfo"><div class="uname' + (u.name ? '' : ' none') + '">' + (u.name ? esc(u.name) : '이름 없음') + (u.isAdmin ? ' <span class="tag">관리자</span>' : '') + '</div>' +
-        '<div class="ugname">Google 이름: ' + (u.googleName ? esc(u.googleName) + ' ' + matchTag(u.name, u.googleName) : '<span class="m m-none">아직 없음</span>') + '</div>' +
+        '<div class="ugname">Google 이름: ' + (u.googleName ? esc(u.googleName) : '<span class="m m-none">아직 없음</span>') + '</div>' +
         '<div class="uemail">' + esc(u.email) + '</div>' +
         '<div class="umeta"><span class="st st-' + u.status + '">' + (STATUS_LABEL[u.status] || u.status) + '</span>' +
         (u.requestedAt ? ' · 신청 ' + fmtDate(u.requestedAt) : '') + '</div></div>' +
