@@ -365,3 +365,22 @@ button.banner{display:block;width:calc(100% - 40px);text-align:left;border:0;cur
 .pv-box img{width:100%;height:100%;display:block}
 .pv-alt{color:var(--ink)!important;flex-basis:110px!important}
 .dt-seg2 button{min-width:0}
+/* PDF 저장·청구완료(4단계 4번) */
+.bx-pdfname{padding:0 22px 6px;font-size:12px;color:var(--ink);word-break:break-all}
+.bx-gbtns{display:flex;gap:6px;flex-wrap:wrap;padding:0 20px 8px}
+.bx-gbtns .mini{height:32px;display:inline-flex;align-items:center;text-decoration:none;color:var(--ink)}
+.bx-gbtns .mini.ok{color:#fff}
+.bx-remake b{font-weight:700}
+.pv-done{margin:20px;padding:28px 20px;background:#fff;border:1px solid var(--line);border-radius:18px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px;word-break:break-all}
+.pv-done p{margin:0;font-size:13px;color:var(--sub);line-height:1.6}
+.pv-ok{width:56px;height:56px;border-radius:28px;background:#E7F6EE;color:#0F7B3F;font-size:28px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.pv-open{text-decoration:none;margin-top:8px}
+.pv-alt2{width:100%;height:48px;border-radius:14px;border:1px solid #DADCE0;background:#fff;font-size:15px;font-weight:600;cursor:pointer}
+/* 보관함 달 고르기 */
+.mp-y{display:flex;align-items:center;justify-content:center;gap:16px;padding:4px 0 10px}
+.mp-y b{font-size:17px;min-width:90px;text-align:center}
+.mp-y .icon-btn{font-size:24px;color:var(--ink)}
+.mp-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;padding:0 8px 8px}
+.mp-m{height:48px;border-radius:12px;border:1px solid var(--line);background:#fff;font-size:15px;font-weight:600;cursor:pointer}
+.mp-m.on{background:var(--dark);border-color:var(--dark);color:#fff}
+.mp-m:disabled{opacity:.3;cursor:default}
