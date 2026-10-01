@@ -13,7 +13,7 @@
   var THUMB_CACHE = 'rs-thumbs-v1';
   var KEEP = { upload: 1, '판독대기': 1, '확인필요': 1, '보관중': 1 };
 
-  var B = { cat: null, tab: 'keep', all: false, sel: {} };
+  var B = { cat: null, tab: 'keep', all: false, sel: {}, open: {} };
   var local = [];          // 폰 대기열의 항목(썸네일·아직 못 올린 것)
   var localEmail = '';
   var thumbs = {};         // id → objectURL | 'fail'
@@ -261,13 +261,24 @@
     return order.map(function (k) {
       var g = groups[k], sum = 0, when = '';
       g.forEach(function (it) { sum += it.amount; if (it.claimedAt > when) when = it.claimedAt; });
-      var has = k !== '(PDF 정보 없음)', nm = has ? pdfName(k) : '';
-      return '<div class="bx-group"><div class="bx-gh"><b>' + (when ? shortDate(when) + ' 청구' : '청구') + '</b> · ' + g.length + '건 · ' + won(sum) + '원</div>' +
-        (has ? '<div class="bx-pdfname" data-pdfname="' + esc(k) + '">' + esc(nm || 'PDF 이름 불러오는 중…') + '</div>' +
-          '<div class="bx-gbtns"><a class="mini" href="https://drive.google.com/file/d/' + encodeURIComponent(k) + '/view" target="_blank" rel="noopener">PDF 열기</a>' +
+      var has = k !== '(PDF 정보 없음)', nm = has ? pdfName(k) : '', open = !!B.open[k];
+      // PDF 한 묶음 = 카드 한 장(파일 아이콘·파일명·합계·사진 띠). 영수증 목록은 접어 두고 눌러서 펼침
+      var strip = g.slice(0, 5).map(function (it) {
+        var th = thumbs[it.id];
+        return '<span class="bx-th sm" data-th="' + esc(it.id) + '">' + (th && th !== 'fail' ? '<img src="' + th + '" alt=""' + (it.rot ? ' class="r' + it.rot + '"' : '') + '>' : '') + '</span>';
+      }).join('') + (g.length > 5 ? '<span class="pc-more">+' + (g.length - 5) + '</span>' : '');
+      return '<div class="pc-card">' +
+        '<div class="pc-head"><span class="pc-icon">PDF</span><div class="pc-main">' +
+          '<div class="pc-name"' + (has ? ' data-pdfname="' + esc(k) + '"' : '') + '>' + esc(has ? (nm || 'PDF 이름 불러오는 중…') : '청구 PDF 정보 없음') + '</div>' +
+          '<div class="pc-meta">' + (when ? shortDate(when) + ' 청구' : '청구') + ' · 영수증 ' + g.length + '건</div></div>' +
+          '<div class="pc-amt">' + won(sum) + '<small>원</small></div></div>' +
+        '<div class="pc-strip">' + strip + '</div>' +
+        (has ? '<div class="pc-btns"><a class="mini" href="https://drive.google.com/file/d/' + encodeURIComponent(k) + '/view" target="_blank" rel="noopener">PDF 열기</a>' +
           '<button class="mini ok" type="button" data-remake="' + esc(k) + '">다시 만들기</button>' +
           '<button class="mini" type="button" data-unclaim="' + esc(k) + '">전체 되돌리기</button></div>' : '') +
-        '<div class="bx-list">' + g.map(row).join('') + '</div></div>';
+        '<button class="pc-toggle" type="button" data-open="' + esc(k) + '">' + (open ? '영수증 접기 ▴' : '영수증 ' + g.length + '건 보기 ▾') + '</button>' +
+        (open ? '<div class="pc-list">' + g.map(row).join('') + '</div>' : '') +
+      '</div>';
     }).join('');
   }
 
@@ -287,6 +298,9 @@
   }
 
   function bind(root, checkable, list) {
+    root.querySelectorAll('[data-open]').forEach(function (b) {
+      b.onclick = function () { var k = b.dataset.open; B.open[k] = !B.open[k]; ctx.rerender(); };
+    });
     root.querySelectorAll('[data-remake]').forEach(function (b) {
       b.onclick = function () {
         var id = b.dataset.remake, ids = list.filter(function (it) { return it.pdfId === id; }).map(function (it) { return it.id; });
@@ -478,8 +492,10 @@
   var rotOf = {};
   function setThumb(id, url) {
     thumbs[id] = url;
-    var box = document.querySelector('.bx-th[data-th="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
-    if (box && url !== 'fail') box.innerHTML = '<img src="' + url + '" alt=""' + (rotOf[id] ? ' class="r' + rotOf[id] + '"' : '') + '>';
+    if (url === 'fail') return;
+    document.querySelectorAll('.bx-th[data-th="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]').forEach(function (box) {
+      box.innerHTML = '<img src="' + url + '" alt=""' + (rotOf[id] ? ' class="r' + rotOf[id] + '"' : '') + '>';
+    });
   }
 
   function requestThumbs(list) {
@@ -546,7 +562,7 @@
     localBlob: function (id) { var q = local.find(function (x) { return x.id === id; }); return q && q.blob ? q.blob : null; },
     endRemake: function () { B.remake = null; B.sel = {}; },
     reset: function () {
-      B = { cat: null, tab: 'keep', all: false, sel: {} };
+      B = { cat: null, tab: 'keep', all: false, sel: {}, open: {} };
       Object.keys(thumbs).forEach(function (k) { if (thumbs[k] !== 'fail') URL.revokeObjectURL(thumbs[k]); });
       thumbs = {}; thumbQueued = {}; thumbWait = []; local = []; localEmail = '';
       if (window.caches) caches.delete(THUMB_CACHE).catch(function () {});
