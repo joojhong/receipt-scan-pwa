@@ -165,7 +165,7 @@
       '</div>' +
       '<div class="bx-cats" role="tablist" aria-label="구분">' + catChips + '</div>' +
       '<div class="bx-month">' +
-        '<div class="seg2"><button type="button" data-m="month"' + (B.all ? '' : ' class="on"') + '>' + mNum + '월</button>' +
+        '<div class="seg2"><button type="button" data-m="month"' + (B.all ? '' : ' class="on"') + '>' + (Number(month.slice(0, 4)) !== new Date().getFullYear() ? month.slice(2, 4) + '년 ' : '') + mNum + '월 ▾</button>' +
         '<button type="button" data-m="all"' + (B.all ? ' class="on"' : '') + '>전체</button></div>' +
         (otherMonth ? '<button type="button" class="bx-other" id="bxOther">다른 달 ' + otherMonth + '건 ›</button>' : '') +
       '</div>' +
@@ -308,7 +308,11 @@
       b.onclick = function () { setCat(b.dataset.cat); ctx.rerender(); };
     });
     root.querySelectorAll('.seg2 button').forEach(function (b) {
-      b.onclick = function () { B.all = b.dataset.m === 'all'; ctx.rerender(); };
+      b.onclick = function () {
+        // 이미 월 보기일 때 한 번 더 누르면 달 고르기 창(과거 내역 보기)
+        if (b.dataset.m === 'month' && !B.all) { monthPicker(); return; }
+        B.all = b.dataset.m === 'all'; ctx.rerender();
+      };
     });
     var ob = root.querySelector('#bxOther');
     if (ob) ob.onclick = function () { B.all = true; ctx.rerender(); };
@@ -395,6 +399,34 @@
       }
     });
     r.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  }
+
+  // 달 고르기(1~12월, 연도 ‹ ›). 이번 달보다 뒤는 고를 수 없음
+  function monthPicker() {
+    var cur = ctx.month, y = Number(cur.slice(0, 4)), now = new Date(), ny = now.getFullYear(), nm = now.getMonth() + 1;
+    var wrap = document.createElement('div');
+    wrap.className = 'sheet-backdrop';
+    var draw = function () {
+      var btns = '';
+      for (var m = 1; m <= 12; m++) {
+        var key = y + '-' + String(m).padStart(2, '0'), future = y > ny || (y === ny && m > nm);
+        btns += '<button type="button" class="mp-m' + (key === cur ? ' on' : '') + '" data-mm="' + m + '"' + (future ? ' disabled' : '') + '>' + m + '월</button>';
+      }
+      wrap.innerHTML = '<div class="sheet" role="dialog" aria-label="달 고르기"><div class="grab"></div>' +
+        '<div class="mp-y"><button class="icon-btn" id="mpPrev" type="button" aria-label="이전 해">‹</button><b>' + y + '년</b>' +
+        '<button class="icon-btn" id="mpNext" type="button" aria-label="다음 해"' + (y >= ny ? ' disabled' : '') + '>›</button></div>' +
+        '<div class="mp-grid">' + btns + '</div>' +
+        '<button class="sheet-item sub" id="mpClose" type="button">닫기</button></div>';
+      wrap.querySelector('#mpPrev').onclick = function () { y--; draw(); };
+      wrap.querySelector('#mpNext').onclick = function () { if (y < ny) { y++; draw(); } };
+      wrap.querySelector('#mpClose').onclick = function () { wrap.remove(); };
+      wrap.querySelectorAll('[data-mm]').forEach(function (b) {
+        b.onclick = function () { wrap.remove(); B.all = false; B.sel = {}; ctx.setMonth(y, Number(b.dataset.mm)); };
+      });
+    };
+    wrap.onclick = function (e) { if (e.target === wrap) wrap.remove(); };
+    draw();
+    document.body.appendChild(wrap);
   }
 
   var TRASH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg>';

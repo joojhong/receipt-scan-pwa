@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '0.10.0';
+  var APP_VERSION = '0.10.1';
   var CATEGORIES = ['경비', '접대비', '회의비', '출장비'];
   var CACHE_KEY = 'rs.cache.receipts';
 
@@ -452,6 +452,7 @@
       rerender: render,
       statusAction: statusAction,
       startPreview: function (sel) { state.selection = sel; location.hash = '#/preview'; },
+      setMonth: function (y, m) { view = { y: y, m: m }; render(); },
       fileInfo: function (id) { return RSStore.fileInfo(id); },
       unclaimAll: function (ids) {
         RSStore.setClaimStatus(state.ws, ids.map(function (id) { return { id: id, status: '보관중', pdfId: '', claimedAt: '', expect: ['청구완료'] }; }), localIsoNow())
