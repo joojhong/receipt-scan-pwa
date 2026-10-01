@@ -50,6 +50,7 @@
       month: r.month || '', widthMm: r.widthMm || 80, rot: r.rot || 0,
       guest: r.guest || '', topic: r.topic || '', account: r.account || '', fuel: r.fuel || '', work: r.work || '',
       car: r.car || '', from: r.from || '', to: r.to || '', km: r.km || '', tripDate: r.tripDate || '', attendees: r.attendees || '',
+      transport: r.transport || '', driveTime: r.driveTime || '',
       card: r.card || '', cardType: r.cardType || ''
     };
   }
@@ -91,35 +92,36 @@
     if (D.error) h += '<div class="banner warn" role="alert">' + esc(D.error) + '</div>';
 
     var dis = ro ? ' disabled' : '';
-    h += '<div class="dt-form">';
-    h += field('구분', '<div class="dt-seg">' + CATEGORIES.map(function (cn) {
-      return '<button type="button" data-k="category" data-v="' + cn + '"' + (v.category === cn ? ' class="on"' : '') + dis + '>' + cn + '</button>';
-    }).join('') + '</div>');
-    h += '<div class="dt-2">' + field('거래일', '<input type="date" data-k="date" max="' + today() + '" value="' + esc(v.date) + '"' + dis + '>', errs.date, true) +
-      field('시각(선택)', '<input type="time" data-k="time" value="' + esc(v.time) + '"' + dis + '>') + '</div>';
-    h += field('금액', '<div class="dt-won"><input type="text" inputmode="numeric" data-k="amount" value="' + esc(v.amount ? won(v.amount) : '') + '" placeholder="0"' + dis + '><span>원</span></div>', errs.amount, true);
-    // 카드사·카드 구분(시트 F·G열). 5단계부터는 AI가 채우고, 여기서 직접 고칠 수 있음
-    h += '<div class="dt-2">' + field('카드사', '<input type="text" data-k="card" list="dtCards" maxlength="20" placeholder="예: 신한카드, 현금" value="' + esc(v.card) + '"' + dis + '>' +
-        '<datalist id="dtCards">' + CARDS.map(function (c) { return '<option value="' + c + '">'; }).join('') + '</datalist>') +
-      field('카드 구분', '<div class="dt-seg dt-seg2">' + ['개인카드', '법인카드'].map(function (t) {
-        return '<button type="button" data-k="cardType" data-v="' + (v.cardType === t ? '' : t) + '"' + (v.cardType === t ? ' class="on"' : '') + dis + '>' + t.replace('카드', '') + '</button>';
-      }).join('') + '</div>') + '</div>';
-    h += extraFields(v, dis, errs);
-    h += field('가맹점명', '<input type="text" data-k="merchant" maxlength="60" value="' + esc(v.merchant) + '"' + dis + '>');
-    h += field('가맹점 주소', '<input type="text" data-k="address" maxlength="100" value="' + esc(v.address) + '"' + dis + '>');
-    // 귀속 월: 기본은 거래일(카드 사용일)의 달로 자동. 필요하면 앱에서 바꿀 수 있음(예: 이번 달 청구에서 빼기)
-    h += field('귀속 월', '<input type="month" data-k="month" value="' + esc(v.month) + '"' + dis + '>', errs.month, false,
-      D.monthFollows ? '거래일(카드 사용일) 기준으로 자동으로 정해집니다. 바꾸면 그 달 청구로 옮겨집니다' : '직접 바꾼 값입니다. 거래일을 바꿔도 따라 바뀌지 않습니다');
-    h += field('내역', '<input type="text" data-k="desc" maxlength="100" value="' + esc(v.desc) + '"' + dis + '>');
-    h += field('메모', '<input type="text" data-k="memo" maxlength="100" value="' + esc(v.memo) + '"' + dis + '>');
+    // ① 결제(모든 구분 공통): 거래일·시각·금액
+    h += section('결제', '',
+      '<div class="dt-2">' + field('거래일', '<input type="date" data-k="date" max="' + today() + '" value="' + esc(v.date) + '"' + dis + '>', errs.date, true) +
+        field('시각(선택)', '<input type="time" data-k="time" value="' + esc(v.time) + '"' + dis + '>') + '</div>' +
+      field('금액', '<div class="dt-won"><input type="text" inputmode="numeric" data-k="amount" value="' + esc(v.amount ? won(v.amount) : '') + '" placeholder="0"' + dis + '><span>원</span></div>', errs.amount, true));
+    // ② 인트라넷 청구 내역(구분별 양식 칸)
+    h += section('인트라넷 청구 내역', 'sec-intra',
+      '<div class="dt-seg dt-cats">' + CATEGORIES.map(function (cn) {
+        return '<button type="button" data-k="category" data-v="' + cn + '"' + (v.category === cn ? ' class="on"' : '') + dis + '>' + cn + '</button>';
+      }).join('') + '</div>' + extraFields(v, dis, errs));
+    // ③ 카드 판독 정보
     var other = [80, 58].indexOf(Number(v.widthMm)) < 0;
-    h += field('영수증 폭', '<div class="dt-seg">' +
-      '<button type="button" data-k="widthMm" data-v="80"' + (Number(v.widthMm) === 80 ? ' class="on"' : '') + dis + '>보통 80mm</button>' +
-      '<button type="button" data-k="widthMm" data-v="58"' + (Number(v.widthMm) === 58 ? ' class="on"' : '') + dis + '>좁은 것 58mm</button>' +
-      '<button type="button" data-k="widthMm" data-v="other"' + (other ? ' class="on"' : '') + dis + '>기타</button></div>' +
-      (other ? '<div class="dt-won dt-mm"><input type="number" inputmode="numeric" data-k="widthNum" min="20" max="300" value="' + esc(v.widthMm) + '"' + dis + '><span>mm</span></div>' : ''), errs.widthMm);
-    h += '<div class="dt-meta">촬영: ' + esc(fmtDT(r.capturedAt)) + '</div>';
-    h += '</div>';
+    h += section('카드 판독 정보', 'sec-card',
+      '<div class="dt-2">' + field('카드사', '<input type="text" data-k="card" list="dtCards" maxlength="20" placeholder="예: 신한카드, 현금" value="' + esc(v.card) + '"' + dis + '>' +
+          '<datalist id="dtCards">' + CARDS.map(function (c) { return '<option value="' + c + '">'; }).join('') + '</datalist>') +
+        field('카드 구분', '<div class="dt-seg dt-seg2">' + ['개인카드', '법인카드'].map(function (t) {
+          return '<button type="button" data-k="cardType" data-v="' + (v.cardType === t ? '' : t) + '"' + (v.cardType === t ? ' class="on"' : '') + dis + '>' + t.replace('카드', '') + '</button>';
+        }).join('') + '</div>') + '</div>' +
+      field('가맹점명', '<input type="text" data-k="merchant" maxlength="60" value="' + esc(v.merchant) + '"' + dis + '>') +
+      field('가맹점 주소', '<input type="text" data-k="address" maxlength="100" value="' + esc(v.address) + '"' + dis + '>') +
+      field('귀속 월', '<input type="month" data-k="month" value="' + esc(v.month) + '"' + dis + '>', errs.month, false,
+        D.monthFollows ? '거래일(카드 사용일) 기준으로 자동으로 정해집니다. 바꾸면 그 달 청구로 옮겨집니다' : '직접 바꾼 값입니다. 거래일을 바꿔도 따라 바뀌지 않습니다') +
+      (r.kind === '첨부' ? field('내역', '<input type="text" data-k="desc" maxlength="100" value="' + esc(v.desc) + '"' + dis + '>') : '') +
+      field('메모', '<input type="text" data-k="memo" maxlength="100" value="' + esc(v.memo) + '"' + dis + '>') +
+      field('영수증 폭', '<div class="dt-seg">' +
+        '<button type="button" data-k="widthMm" data-v="80"' + (Number(v.widthMm) === 80 ? ' class="on"' : '') + dis + '>보통 80mm</button>' +
+        '<button type="button" data-k="widthMm" data-v="58"' + (Number(v.widthMm) === 58 ? ' class="on"' : '') + dis + '>좁은 것 58mm</button>' +
+        '<button type="button" data-k="widthMm" data-v="other"' + (other ? ' class="on"' : '') + dis + '>기타</button></div>' +
+        (other ? '<div class="dt-won dt-mm"><input type="number" inputmode="numeric" data-k="widthNum" min="20" max="300" value="' + esc(v.widthMm) + '"' + dis + '><span>mm</span></div>' : ''), errs.widthMm) +
+      '<div class="dt-meta">촬영: ' + esc(fmtDT(r.capturedAt)) + '</div>');
 
     // 아래 버튼
     var dirty = changedKeys().length > 0;
@@ -137,6 +139,10 @@
     if (!D.photo && !D.photoErr && !D.photoLoading) loadPhoto(r);
   }
 
+  function section(title, cls, body) {
+    return '<section class="dt-sec ' + cls + '"><div class="dt-sec-h">' + title + '</div><div class="dt-sec-b">' + body + '</div></section>';
+  }
+
   function field(label, input, err, req, hint) {
     return '<div class="dt-f"><span class="dt-l">' + label + (req ? ' <em>필수</em>' : '') + '</span>' + input +
       (err ? '<span class="dt-err">' + esc(err) + '</span>' : (hint ? '<span class="dt-hint">' + esc(hint) + '</span>' : '')) + '</div>';
@@ -145,26 +151,31 @@
   // 구분별 추가 입력(필수 = 청구(PDF 만들기) 전에 채워야 함)
   function extraFields(v, dis, errs) {
     var h = '';
-    var reqTag = function (t) { return t + ' <span class="opt">(선택)</span>'; }; // 모두 선택 입력(시트에서 적어도 됨)
-    if (v.category === '접대비') h += field(reqTag('접대상대방'), '<input type="text" data-k="guest" maxlength="60" placeholder="예: ○○상사 김부장" value="' + esc(v.guest) + '"' + dis + '>');
-    if (v.category === '회의비') {
-      h += field(reqTag('회의 내용'), '<input type="text" data-k="topic" maxlength="100" placeholder="예: 3분기 영업 회의" value="' + esc(v.topic) + '"' + dis + '>');
-      h += field('참석자(선택)', '<input type="text" data-k="attendees" maxlength="200" placeholder="예: 홍길동, 김철수" value="' + esc(v.attendees) + '"' + dis + '>', '', false, '나중에 구글 시트 "참석자" 열에 적어도 됩니다. 적으면 앱에도 보입니다');
-    }
-    if (v.category === '출장비') h += field(reqTag('출장일'), '<input type="date" data-k="tripDate" value="' + esc(v.tripDate) + '"' + dis + '>', errs.tripDate, false, '보통 출장 첫째 날. 같은 출장의 영수증을 묶는 데 씁니다');
+    var opt = function (t) { return t + ' <span class="opt">(선택)</span>'; }; // 모두 선택 입력(시트에서 적어도 됨)
+    var txt = function (k, max, ph) { return '<input type="text" data-k="' + k + '" maxlength="' + max + '"' + (ph ? ' placeholder="' + ph + '"' : '') + ' value="' + esc(v[k]) + '"' + dis + '>'; };
     if (v.category === '경비') {
-      h += field(reqTag('계정'), '<select data-k="account"' + dis + '><option value="">고르기</option>' + ACCOUNTS.map(function (a) {
+      // 인트라넷 월간경비 칸 순서: 계정 · 업무내용 · (출발지·도착지·교통수단·운행시간·운행거리) · 업무용승용차
+      h += field(opt('계정'), '<select data-k="account"' + dis + '><option value="">고르기</option>' + ACCOUNTS.map(function (a) {
         return '<option' + (v.account === a ? ' selected' : '') + '>' + esc(a) + '</option>';
       }).join('') + (v.account && ACCOUNTS.indexOf(v.account) < 0 ? '<option selected>' + esc(v.account) + '</option>' : '') + '</select>');
-      if (v.account === FUEL_ACCOUNT) h += field(reqTag('주유량(L)'), '<div class="dt-won"><input type="text" inputmode="decimal" data-k="fuel" value="' + esc(v.fuel) + '"' + dis + '><span>L</span></div>', errs.fuel);
-      h += field('업무내용', '<input type="text" data-k="work" maxlength="100" value="' + esc(v.work) + '"' + dis + '>');
-      h += '<details class="dt-more"' + (v.car || v.from || v.to || v.km ? ' open' : '') + '><summary>차량 운행 정보(선택)</summary>' +
-        field('업무용 차량', '<input type="text" data-k="car" maxlength="30" placeholder="예: 12가3456" value="' + esc(v.car) + '"' + dis + '>', '', false, '한 번 적으면 다음 경비 영수증에도 채워 둡니다') +
-        '<div class="dt-2">' + field('출발지', '<input type="text" data-k="from" maxlength="40" value="' + esc(v.from) + '"' + dis + '>') +
-        field('도착지', '<input type="text" data-k="to" maxlength="40" value="' + esc(v.to) + '"' + dis + '>') + '</div>' +
+      if (v.account === FUEL_ACCOUNT) h += field(opt('업무내용 = 주유량(L)'), '<div class="dt-won"><input type="text" inputmode="decimal" data-k="fuel" value="' + esc(v.fuel) + '"' + dis + '><span>L</span></div>', errs.fuel, false, '주유비는 업무내용 칸에 주유량을 적습니다');
+      else h += field(opt('업무내용'), txt('work', 100, '예: IT 외주업체 미팅'));
+      h += '<details class="dt-more"><summary>운행 정보 (출발지·도착지·교통수단·운행시간·운행거리)</summary>' +
+        '<div class="dt-2">' + field('출발지', txt('from', 40)) + field('도착지', txt('to', 40)) + '</div>' +
+        '<div class="dt-2">' + field('교통수단', txt('transport', 20, '예: 자가용')) + field('운행시간', txt('driveTime', 20, '예: 1시간 30분')) + '</div>' +
         field('운행거리', '<div class="dt-won"><input type="text" inputmode="decimal" data-k="km" value="' + esc(v.km) + '"' + dis + '><span>km</span></div>', errs.km) +
       '</details>';
+      h += field(opt('업무용승용차'), txt('car', 30, '예: 183허5450'), '', false, '한 번 적으면 다음 경비 영수증에도 채워 둡니다');
     }
+    if (v.category === '접대비') {
+      h += field(opt('내용'), txt('topic', 100, '예: 영진종합상사 대표 미팅'));
+      h += field(opt('접대상대방'), txt('guest', 60, '예: 정태금'));
+    }
+    if (v.category === '회의비') {
+      h += field(opt('내용'), txt('topic', 100, '예: 양산사무소 점심 식사'));
+      h += field(opt('참석자'), txt('attendees', 200, '예: 박태영, 손희진'), '', false, '나중에 구글 시트 "참석자" 열에 적어도 됩니다');
+    }
+    if (v.category === '출장비') h += field(opt('출장일'), '<input type="date" data-k="tripDate" value="' + esc(v.tripDate) + '"' + dis + '>', errs.tripDate, false, '보통 출장 첫째 날. 같은 출장의 영수증을 묶는 데 씁니다');
     return h;
   }
 
@@ -185,7 +196,7 @@
   }
 
   var KEYS = ['category', 'date', 'time', 'amount', 'merchant', 'address', 'desc', 'memo', 'month', 'widthMm', 'rot',
-    'guest', 'topic', 'account', 'fuel', 'work', 'car', 'from', 'to', 'km', 'tripDate', 'attendees', 'card', 'cardType'];
+    'guest', 'topic', 'account', 'fuel', 'work', 'car', 'from', 'to', 'km', 'tripDate', 'attendees', 'card', 'cardType', 'transport', 'driveTime'];
   function changedKeys() {
     return KEYS.filter(function (k) {
       if (k === 'car' && D.base.carDefault !== undefined && D.v.car === D.base.carDefault && !D.orig.car) return false; // 채워 둔 기본값만으로는 "바뀜" 아님
