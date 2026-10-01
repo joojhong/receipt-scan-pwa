@@ -384,3 +384,22 @@ button.banner{display:block;width:calc(100% - 40px);text-align:left;border:0;cur
 .mp-m{height:48px;border-radius:12px;border:1px solid var(--line);background:#fff;font-size:15px;font-weight:600;cursor:pointer}
 .mp-m.on{background:var(--dark);border-color:var(--dark);color:#fff}
 .mp-m:disabled{opacity:.3;cursor:default}
+/* 청구완료 PDF 묶음 카드 */
+.pc-card{margin:0 20px 14px;background:#fff;border:1px solid #D9DEF5;border-left:5px solid var(--accent);border-radius:16px;padding:14px 14px 6px;box-shadow:0 2px 8px rgba(47,79,216,.06)}
+.pc-head{display:flex;align-items:center;gap:10px}
+.pc-icon{flex-shrink:0;width:40px;height:48px;border-radius:6px;background:#E5484D;color:#fff;font-size:11px;font-weight:800;display:flex;align-items:flex-end;justify-content:center;padding-bottom:7px;position:relative}
+.pc-icon::before{content:'';position:absolute;top:0;right:0;border-style:solid;border-width:0 11px 11px 0;border-color:transparent #F4F3EF transparent transparent}
+.pc-main{flex:1;min-width:0}
+.pc-name{font-size:14px;font-weight:700;word-break:break-all;line-height:1.35}
+.pc-meta{font-size:12px;color:var(--sub);margin-top:3px}
+.pc-amt{flex-shrink:0;font-size:16px;font-weight:700}
+.pc-amt small{font-size:12px;font-weight:500;color:var(--sub);margin-left:1px}
+.pc-strip{display:flex;gap:6px;margin:12px 0 10px;align-items:center}
+.bx-th.sm{width:34px;height:44px;border-radius:4px;border:1px solid var(--line)}
+.pc-more{font-size:12px;font-weight:600;color:var(--sub);padding-left:2px}
+.pc-btns{display:flex;gap:6px;flex-wrap:wrap}
+.pc-btns .mini{height:34px;display:inline-flex;align-items:center;text-decoration:none;color:var(--ink)}
+.pc-btns .mini.ok{color:#fff}
+.pc-toggle{display:block;width:100%;margin-top:8px;border:0;border-top:1px solid var(--line);background:transparent;padding:10px 0 6px;font-size:13px;font-weight:600;color:var(--accent);cursor:pointer}
+.pc-list{margin:0 -14px 8px;border-top:1px solid var(--line);background:#FAFAF8}
+.pc-list .bx-row{background:#FAFAF8}
