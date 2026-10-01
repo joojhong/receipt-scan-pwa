@@ -403,3 +403,15 @@ button.banner{display:block;width:calc(100% - 40px);text-align:left;border:0;cur
 .pc-toggle{display:block;width:100%;margin-top:8px;border:0;border-top:1px solid var(--line);background:transparent;padding:10px 0 6px;font-size:13px;font-weight:600;color:var(--accent);cursor:pointer}
 .pc-list{margin:0 -14px 8px;border-top:1px solid var(--line);background:#FAFAF8}
 .pc-list .bx-row{background:#FAFAF8}
+/* 영수증 상세 3묶음(결제 · 인트라넷 청구 내역 · 카드 판독 정보) */
+.dt-sec{margin:0 20px 14px;background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.dt-sec-h{padding:10px 14px;font-size:13px;font-weight:700;color:var(--ink);background:#F6F5F1;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:6px}
+.dt-sec-h::before{content:'';width:4px;height:14px;border-radius:2px;background:var(--dark)}
+.sec-intra{border-color:#D9DEF5}
+.sec-intra .dt-sec-h{background:#EEF1FC;color:#22379C;border-bottom-color:#D9DEF5}
+.sec-intra .dt-sec-h::before{background:var(--accent)}
+.sec-card .dt-sec-h::before{background:#8A8D94}
+.dt-sec-b{padding:4px 14px 10px}
+.dt-sec-b > .dt-f:last-child,.dt-sec-b > .dt-2:last-child .dt-f{border-bottom:0}
+.dt-cats{padding:10px 0 4px}
+.dt-more{border-bottom:1px solid var(--line)}
