@@ -99,7 +99,7 @@
       '<div class="dt-2">' + field('거래일', '<input type="date" data-k="date" max="' + today() + '" value="' + esc(v.date) + '"' + dis + '>', errs.date, true) +
         field('시각(선택)', '<input type="time" data-k="time" value="' + esc(v.time) + '"' + dis + '>') + '</div>' +
       field('금액', '<div class="dt-won"><input type="text" inputmode="numeric" data-k="amount" value="' + esc(v.amount ? won(v.amount) : '') + '" placeholder="0"' + dis + '><span>원</span></div>', errs.amount, true)
-        .replace('필수</em>', '필수</em>' + placeTag(v)));
+        .replace('필수</em>', '필수</em>' + placeTag(v)) + payField(v, dis));
     // ② 인트라넷 청구 내역(구분별 양식 칸)
     h += section('인트라넷 청구 내역', 'sec-intra',
       '<div class="dt-seg dt-cats">' + CATEGORIES.map(function (cn) {
@@ -108,12 +108,8 @@
     // ③ 카드 판독 정보
     var other = [80, 58].indexOf(Number(v.widthMm)) < 0;
     h += section('카드 판독 정보', 'sec-card',
-      '<div class="dt-2">' + field('카드사', '<input type="text" data-k="card" list="dtCards" maxlength="20" placeholder="예: 신한카드, 현금" value="' + esc(v.card) + '"' + dis + '>' +
-          '<datalist id="dtCards">' + CARDS.map(function (c) { return '<option value="' + c + '">'; }).join('') + '</datalist>') +
-        (USE_CATS[v.category] || v.category === '경비' ? field('카드 구분', '<div class="dt-ro">' + (v.cardType === '법인카드' ? '법인' + (v.corpCard ? ' · ' + esc(v.corpCard) : '') : '개인') + ' <span class="opt">(위 ' + (v.category === '경비' ? '사용내역' : '사용구분') + '에서 바꿈)</span></div>') :
-        field('카드 구분', '<div class="dt-seg dt-seg2">' + ['개인카드', '법인카드'].map(function (t) {
-          return '<button type="button" data-k="cardType" data-v="' + (v.cardType === t ? '' : t) + '"' + (v.cardType === t ? ' class="on"' : '') + dis + '>' + t.replace('카드', '') + '</button>';
-        }).join('') + '</div>')) + '</div>' +
+      field('카드사', '<input type="text" data-k="card" list="dtCards" maxlength="20" placeholder="예: 신한카드, 현금" value="' + esc(v.card) + '"' + dis + '>' +
+        '<datalist id="dtCards">' + CARDS.map(function (c) { return '<option value="' + c + '">'; }).join('') + '</datalist>') +
       field('가맹점명', '<input type="text" data-k="merchant" maxlength="60" value="' + esc(v.merchant) + '"' + dis + '>') +
       field('가맹점 주소', '<input type="text" data-k="address" maxlength="100" value="' + esc(v.address) + '"' + dis + '>') +
       field('귀속 월', '<input type="month" data-k="month" value="' + esc(v.month) + '"' + dis + '>', errs.month, false,
@@ -163,6 +159,22 @@
     return parts.length ? '<span class="dt-place">' + esc(parts.join(' · ')) + '</span>' : '';
   }
 
+  // 결제 수단(개인카드·법인카드·현금). 법인카드면 회사 법인카드 중 하나를 고름 → 인트라넷 사용구분·사용내역이 이것을 따라감
+  function payField(v, dis) {
+    var types = [['개인카드', '개인카드'], ['법인카드', '법인카드'], ['현금', '현금']];
+    var cur = v.cardType || '개인카드';
+    var h = field('결제 수단', '<div class="dt-seg">' + types.map(function (x) {
+      return '<button type="button" data-k="cardType" data-v="' + x[0] + '"' + (cur === x[0] ? ' class="on"' : '') + dis + '>' + x[1] + '</button>';
+    }).join('') + '</div>', '', false, cur === '법인카드' ? '' : '인트라넷 사용구분(개인청구·현금경비/법인카드)이 이 값에 따라 정해집니다');
+    if (cur === '법인카드') {
+      var cards = RSAuth.corpCards();
+      h += field('법인카드', '<select data-k="corpCard"' + dis + '><option value="">선택</option>' + cards.map(function (c) {
+        return '<option' + (v.corpCard === c ? ' selected' : '') + '>' + esc(c) + '</option>';
+      }).join('') + (v.corpCard && cards.indexOf(v.corpCard) < 0 ? '<option selected>' + esc(v.corpCard) + '</option>' : '') + '</select>', '', v.category === '접대비' || v.category === '회의비');
+    }
+    return h;
+  }
+
   function section(title, cls, body) {
     return '<section class="dt-sec ' + cls + '"><div class="dt-sec-h">' + title + '</div><div class="dt-sec-b">' + body + '</div></section>';
   }
@@ -178,11 +190,8 @@
     var opt = function (t) { return t + ' <span class="opt">(선택)</span>'; }; // 모두 선택 입력(시트에서 적어도 됨)
     var txt = function (k, max, ph) { return '<input type="text" data-k="' + k + '" maxlength="' + max + '"' + (ph ? ' placeholder="' + ph + '"' : '') + ' value="' + esc(v[k]) + '"' + dis + '>'; };
     if (v.category === '경비') {
-      // 인트라넷 월간경비: 사용내역(현금경비·법인카드)별로 아예 따로 청구
-      h += field('사용내역', '<div class="dt-seg dt-seg2">' +
-        '<button type="button" data-k="cardType" data-v="개인카드"' + (v.cardType !== '법인카드' ? ' class="on"' : '') + dis + '>현금경비</button>' +
-        '<button type="button" data-k="cardType" data-v="법인카드"' + (v.cardType === '법인카드' ? ' class="on"' : '') + dis + '>법인카드</button></div>', '', false,
-        '현금경비(개인 카드·현금)와 법인카드는 따로 PDF를 만듭니다');
+      // 인트라넷 월간경비: 사용내역(현금경비·법인카드)별로 아예 따로 청구. 위 결제 수단에 따라 정해짐
+      h += field('사용내역', '<div class="dt-ro">' + (v.cardType === '법인카드' ? '법인카드' : '현금경비') + ' <span class="opt">(결제 수단에 따라 정해짐)</span></div>');
       // 인트라넷 월간경비 칸 순서: 계정 · 업무내용 · (출발지·도착지·교통수단·운행시간·운행거리) · 업무용승용차
       h += field('계정', '<select data-k="account"' + dis + '><option value="">고르기</option>' + ACCOUNTS.map(function (a) {
         return '<option' + (v.account === a ? ' selected' : '') + '>' + esc(a) + '</option>';
@@ -221,17 +230,9 @@
       }
     }
     if (USE_CATS[v.category]) {
-      // 인트라넷 접대비·회의비 양식: 사용구분(개인청구·법인카드) + 법인카드면 어느 카드인지
-      var corp = v.cardType === '법인카드';
-      h += field('사용구분', '<div class="dt-seg dt-seg2">' +
-        '<button type="button" data-k="cardType" data-v="개인카드"' + (!corp ? ' class="on"' : '') + dis + '>개인청구</button>' +
-        '<button type="button" data-k="cardType" data-v="법인카드"' + (corp ? ' class="on"' : '') + dis + '>법인카드</button></div>');
-      if (corp) {
-        var cards = RSAuth.corpCards();
-        h += field('법인카드', '<select data-k="corpCard"' + dis + '><option value="">선택</option>' + cards.map(function (c) {
-          return '<option' + (v.corpCard === c ? ' selected' : '') + '>' + esc(c) + '</option>';
-        }).join('') + (v.corpCard && cards.indexOf(v.corpCard) < 0 ? '<option selected>' + esc(v.corpCard) + '</option>' : '') + '</select>', '', true);
-      }
+      // 인트라넷 접대비·회의비 양식의 사용구분·법인카드: 위 결제 수단에 따라 정해짐
+      h += field('사용구분', '<div class="dt-ro">' + (v.cardType === '법인카드' ? '법인카드' + (v.corpCard ? ' · ' + esc(v.corpCard) : ' · <em class="soft">카드 미선택</em>') : '개인청구') +
+        ' <span class="opt">(결제 수단에 따라 정해짐)</span></div>');
     }
     if (v.category === '접대비') {
       h += field('내용', txt('topic', 100, '예: 영진종합상사 대표 미팅'), '', true);

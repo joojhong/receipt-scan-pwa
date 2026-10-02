@@ -57,14 +57,15 @@
     });
   }
 
-  function titleOf(kind, use) { return kind === '경비' ? '월간경비 사용 내역서' : kind + ' ' + use + ' 사용내역서'; }
+  function titleOf(kind, use) { return kind === '경비' ? '월간경비 사용 내역서' : kind + ' ' + (use ? use + ' ' : '') + '사용내역서'; }
 
   // ── 그리기 ──
   // month = 'YYYY-MM'(청구월), dpi = 해상도. 결과 = 캔버스 배열(한 장씩)
   function draw(kind, items, info, month, dpi) {
     info = info || {};
     var k = dpi / 25.4, W = Math.round(210 * k), H = Math.round(297 * k);
-    var use = items.length ? useType(items[0]) : '개인청구';
+    var useSet = {}; items.forEach(function (it) { useSet[useType(it)] = 1; });
+    var use = Object.keys(useSet).length === 1 ? Object.keys(useSet)[0] : '';   // 접대비·회의비에 개인·법인이 섞이면 제목에서 사용구분을 뺌
     var C = cols(kind), rows = rowsOf(kind, items, info);
     var total = items.reduce(function (a, it) { return a + (Number(it.amount) || 0); }, 0);
     var g1 = kind === '경비';
@@ -93,7 +94,7 @@
         font(3.3);
         text(y ? y + '년 ' + m + '월' : '', 7, 42);
         text([info['회사명'] || '', info['팀명'] || '', '사번 : ' + (info['사번'] || ''), '사원명 : ' + (info['사원명'] || '')].join('     '), 203, 42, 'right');
-        font(3.3); square(7, 59, 2.8); text(use + ' 승인내역', 11.5, 59);
+        font(3.3); square(7, 59, 2.8); text((use ? use + ' ' : '') + '승인내역', 11.5, 59);
       }
       // 표
       var x0 = g1 ? 7 : 7, widths = C.map(function (cc) { return cc.w * (196 / 190); });

@@ -60,7 +60,8 @@
     }
     var ym = mostCommon(items.map(function (it) { return it.month; }));
     date = ym ? ym.slice(2, 4) + ym.slice(5, 7) + String(lastDay(ym)).padStart(2, '0') : '000000';
-    return date + '_' + category + '_' + (mode === 'sheet' ? '갑지' : '영수증') + '_' + who + '.pdf';
+    var corp = category === '경비' && items.length && items.every(function (it) { return it.cardType === '법인카드'; }) ? '법인_' : ''; // 경비 법인카드는 따로 청구
+    return date + '_' + category + '_' + corp + (mode === 'sheet' ? '갑지' : '영수증') + '_' + who + '.pdf';
   }
 
   // ── 그리기 ──
@@ -86,7 +87,7 @@
     var warns = [];
     // 사용구분(개인청구·법인카드)이 섞이면 갑지를 따로 만들어야 함
     var uses = {}; items.forEach(function (it) { var u = RSGapji.useType(it); (uses[u] = uses[u] || []).push(it.id); });
-    var mixed = (withSheet || sel.category === '경비') && Object.keys(uses).length > 1; // 경비는 사용내역별로 아예 따로 청구
+    var mixed = sel.category === '경비' && Object.keys(uses).length > 1; // 경비는 사용내역별로 아예 따로 청구(접대비·회의비는 한 PDF에 함께)
     var useLabel = sel.category === '경비' ? { '개인청구': '현금경비', '법인카드': '법인카드' } : { '개인청구': '개인청구', '법인카드': '법인카드' };
     var lacks = REQUIRED[sel.category] ? items.map(function (it) { return { it: it, m: missingOf(sel.category, it) }; }).filter(function (x) { return x.m.length; }) : [];
     var noInfo = withSheet && !(info['사번'] && info['사원명'] && info['팀명']);
