@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '0.12.1';
+  var APP_VERSION = '0.12.2';
   var CATEGORIES = ['경비', '접대비', '회의비', '출장비'];
   var CACHE_KEY = 'rs.cache.receipts';
   var SET_KEY = 'rs.cache.settings';
@@ -273,7 +273,6 @@
         '<div class="grab"></div>' +
         '<div class="sheet-email">' + (state.user.name ? '<b>' + esc(state.user.name) + '</b><br>' : '') + esc(state.user.email) + '</div>' +
         '<a class="sheet-item" href="#/me" id="meLink">내 정보 (갑지 머리글·차량)</a>' +
-        '<button class="sheet-item" id="nameBtn" type="button">이름 바꾸기</button>' +
         (ws ? '<a class="sheet-item" href="' + RSStore.sheetUrl(ws) + '" target="_blank" rel="noopener">영수증 장부(시트) 열기</a>' +
               '<a class="sheet-item" href="' + RSStore.folderUrl(ws) + '" target="_blank" rel="noopener">Drive 폴더 열기</a>' : '') +
         (RSAuth.isAdmin() ? '<a class="sheet-item" href="#/admin" id="adminLink">사용자 승인' + (state.admin.waiting ? ' (' + state.admin.waiting + ')' : '') + '</a>' : '') +
@@ -283,11 +282,6 @@
       '</div>';
     wrap.onclick = function (e) { if (e.target === wrap) wrap.remove(); };
     document.body.appendChild(wrap);
-    wrap.querySelector('#nameBtn').onclick = function () {
-      wrap.remove();
-      var v = prompt('관리자 화면에 보일 이름 (예: 홍길동 대리)', state.user.name || '');
-      if (v !== null) saveName(v);
-    };
     wrap.querySelector('#meLink').onclick = function () { wrap.remove(); };
     wrap.querySelector('#reloadBtn').onclick = function () { wrap.remove(); refresh(); };
     var al = wrap.querySelector('#adminLink');
@@ -601,7 +595,7 @@
     }) : [];
     RSPreview.render(root, {
       selection: sel ? { ids: items.map(function (it) { return it.id; }), items: items, category: sel.category, leftOut: sel.leftOut, remake: sel.remake || null } : null,
-      userName: state.user.name || (state.user.email || '').split('@')[0],
+      userName: (state.settings || {})['사원명'] || state.user.name || (state.user.email || '').split('@')[0],
       toast: toast,
       back: function () { location.hash = '#/box'; },
       isActive: function () { return currentTab() === 'preview'; },
@@ -666,7 +660,11 @@
       if (d['차량번호'] && !d['회사 차량']) { toast('회사 차량인지 개인 차량인지 골라 주세요'); return; }
       state.meSaving = true; render();
       var ch = {}; RSStore.SETTING_KEYS.forEach(function (k) { ch[k] = d[k] || ''; });
-      saveSettings(ch).then(function () { state.meSaving = false; toast('내 정보를 저장했습니다'); leave(); })
+      saveSettings(ch).then(function () {
+        // 사원명 = 앱 이름(관리자 화면·PDF 파일명). 바뀌었으면 함께 바꿈
+        var nm = ch['사원명'];
+        if (nm && nm !== state.user.name) return RSAuth.setName(nm).then(function (v) { state.user.name = v || nm; }).catch(function () { toast('관리자 화면 이름은 바꾸지 못했습니다'); });
+      }).then(function () { state.meSaving = false; toast('내 정보를 저장했습니다'); leave(); })
         .catch(function (e) { state.meSaving = false; toast(e.message || '저장하지 못했습니다'); render(); });
     };
   }
