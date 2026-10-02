@@ -170,7 +170,7 @@
       } else if (v.account === OWN_CAR_ACCOUNT) {
         h += '<div class="dt-2">' + field('출발지', txt('from', 40, '예: 창원사무소'), '', true) + field('도착지', txt('to', 40, '예: 한광공구'), '', true) + '</div>' +
           '<div class="dt-2">' + field('운행시간', minIn, errs.driveTime, true) + field('운행거리', kmIn, errs.km, true) + '</div>';
-      } else if (v.account !== FUEL_ACCOUNT) {
+      } else if (v.account !== FUEL_ACCOUNT && v.account !== PARKING_ACCOUNT) { // 주유비·주차/통행료는 운행 정보 없음
         h += '<details class="dt-more"><summary>운행 정보 (출발지·도착지·교통수단·운행시간·운행거리)</summary>' +
           '<div class="dt-2">' + field('출발지', txt('from', 40)) + field('도착지', txt('to', 40)) + '</div>' +
           '<div class="dt-2">' + field('교통수단', txt('transport', 20, '예: 택시')) + field('운행시간', minIn) + '</div>' +
