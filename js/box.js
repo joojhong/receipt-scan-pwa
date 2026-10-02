@@ -216,7 +216,7 @@
     var canCheck = (B.tab === 'keep' && (it.st === '보관중' || inRemake(it))) || B.tab === 'excl';
     var on = !!B.sel[it.id];
     var isFile = it.kind === '첨부';
-    var title = isFile ? (it.desc || '파일 첨부') :
+    var title = isFile ? (it.desc || it.work || it.topic || '파일 첨부') :
       (it.merchant || (it.st === 'upload' || it.st === '판독대기' ? '판독 전 영수증' : '가맹점명 없음'));
     var date = it.txAt ? shortDate(it.txAt, true) : (it.capturedAt ? '촬영 ' + shortDate(it.capturedAt, true) : '');
     var sub = [date, it.card || '', it.memo ? it.memo.slice(0, 24) : ''].filter(Boolean).join(' · ');

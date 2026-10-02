@@ -60,8 +60,8 @@
       (A.pay === '법인카드' ? field('법인카드', '<select data-a="corpCard"><option value="">선택</option>' + RSAuth.corpCards().map(function (cc) {
         return '<option' + (A.corpCard === cc ? ' selected' : '') + '>' + esc(cc) + '</option>';
       }).join('') + '</select>', A.category === '접대비' || A.category === '회의비') : '') +
-      field('내역', '<input type="text" data-a="desc" maxlength="100" placeholder="예: 9월 통신비, 9월 하이패스" value="' + esc(A.desc) + '">', true,
-        '보관함 목록에 이 이름으로 보입니다. 계정·내용 같은 인트라넷 칸은 저장한 뒤 상세 화면에서 채웁니다') +
+      field(descLabel(), '<input type="text" data-a="desc" maxlength="100" placeholder="예: 9월 통신비, 9월 하이패스" value="' + esc(A.desc) + '">', true,
+        '인트라넷 ' + descLabel() + ' 칸에 들어가고, 보관함 목록에도 이 이름으로 보입니다. 나머지 인트라넷 칸(계정 등)은 저장한 뒤 상세 화면에서 채웁니다') +
       '</div></section>';
     var ok = validate() === '';
     h += '<div class="dt-bar"><button class="cta" id="atSave" type="button"' + (ok && !A.busy && navigator.onLine ? '' : ' disabled') + '>' +
@@ -71,6 +71,9 @@
     bind(root);
   }
 
+  // 적은 내용이 들어갈 인트라넷 칸 이름
+  function descLabel() { return A.category === '경비' ? '업무내용' : (A.category === '접대비' || A.category === '회의비') ? '내용' : '내역'; }
+
   function validate() {
     if (!A.files.length) return 'PDF 파일을 골라 주세요';
     if (A.files.some(function (f) { return f.checking; })) return 'PDF 확인 중입니다';
@@ -79,7 +82,7 @@
     if (tot > MAX) return 'PDF를 합치면 10MB가 넘습니다(지금 ' + (tot / 1048576).toFixed(1) + 'MB). 일부를 빼 주세요';
     if (!A.date) return '날짜를 적어 주세요';
     if (!(Number(A.amount) > 0)) return '금액을 적어 주세요';
-    if (!A.desc.trim()) return '내역을 적어 주세요';
+    if (!A.desc.trim()) return descLabel() + '을(를) 적어 주세요';
     if (A.pay === '법인카드' && (A.category === '접대비' || A.category === '회의비') && !A.corpCard) return '법인카드를 골라 주세요';
     return '';
   }

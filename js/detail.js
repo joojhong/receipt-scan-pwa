@@ -84,7 +84,7 @@
     var h = '<header class="dt-top"><button class="icon-btn" id="dtBack" aria-label="뒤로">' + ICON.back + '</button><h1>영수증 상세</h1>' +
       '<span class="dt-st st-' + esc(st) + '">' + esc(badge) + '</span></header>';
 
-    if (r.kind === '첨부') h += '<div class="dt-file">' + ICON.doc + '<b>' + esc(v.desc || 'PDF 첨부') + '</b>' +
+    if (r.kind === '첨부') h += '<div class="dt-file">' + ICON.doc + '<b>' + esc(v.desc || v.work || v.topic || 'PDF 첨부') + '</b>' +
       (r.fileId ? '<a class="mini" href="https://drive.google.com/file/d/' + encodeURIComponent(r.fileId) + '/view" target="_blank" rel="noopener">PDF 열기</a>' : '') + '</div>';
     else h += '<div class="dt-photo" id="dtPhoto">' + (D.photo ? '<img src="' + D.photo + '" alt="영수증 사진">' : '<div class="dt-ph">' + (D.photoErr ? '사진을 불러오지 못했습니다 <button class="mini" id="dtPhotoRetry" type="button">다시 시도</button>' : '사진을 불러오는 중…') + '</div>') +
       (!ro && D.photo ? '<button class="dt-rot" id="dtRot" type="button">' + ICON.rotate + '회전</button>' : '') + '</div>';
@@ -118,7 +118,7 @@
       field('가맹점 주소', '<input type="text" data-k="address" maxlength="100" value="' + esc(v.address) + '"' + dis + '>') +
       field('귀속 월', '<input type="month" data-k="month" value="' + esc(v.month) + '"' + dis + '>', errs.month, false,
         D.monthFollows ? '거래일(카드 사용일) 기준으로 자동으로 정해집니다. 바꾸면 그 달 청구로 옮겨집니다' : '직접 바꾼 값입니다. 거래일을 바꿔도 따라 바뀌지 않습니다') +
-      (r.kind === '첨부' ? field('내역', '<input type="text" data-k="desc" maxlength="100" value="' + esc(v.desc) + '"' + dis + '>') : '') +
+      (r.kind === '첨부' && (v.desc || v.category === '출장비') ? field('내역', '<input type="text" data-k="desc" maxlength="100" value="' + esc(v.desc) + '"' + dis + '>') : '') +
       field('메모', '<input type="text" data-k="memo" maxlength="100" value="' + esc(v.memo) + '"' + dis + '>') +
       (r.kind === '첨부' ? '' : field('영수증 폭', '<div class="dt-seg">' +
         '<button type="button" data-k="widthMm" data-v="80"' + (Number(v.widthMm) === 80 ? ' class="on"' : '') + dis + '>보통 80mm</button>' +

@@ -161,7 +161,7 @@
       h += '<p class="hint">흰 종이 = A4 한 장(여백 10mm). 영수증은 실제 크기로 놓고, 넘치는 쪽만 조금 줄입니다(85%까지).</p>';
     }
     h += atts.map(function (it) {
-      return attCard('첨부 영수증 PDF', it.desc || 'PDF 첨부', ' · ' + won(it.amount) + '원', it.fileId ? 'https://drive.google.com/file/d/' + encodeURIComponent(it.fileId) + '/view' : '');
+      return attCard('첨부 영수증 PDF', it.desc || it.work || it.topic || 'PDF 첨부', ' · ' + won(it.amount) + '원', it.fileId ? 'https://drive.google.com/file/d/' + encodeURIComponent(it.fileId) + '/view' : '');
     }).join('');
     h += '<div class="dt-bar"><button class="btn-alt pv-alt" id="pvBack2" type="button">고르기로</button>' +
       '<button class="cta" id="pvSave" type="button"' + (P.pages && !P.busy && !mixed && !lacks.length && navigator.onLine ? '' : ' disabled') + '>' +
@@ -284,7 +284,7 @@
     };
     if (frontBuf) await add(frontBuf, '출장비 갑지');
     if (appBlob) await add(await appBlob.arrayBuffer(), '영수증');
-    for (var i = 0; i < attBufs.length; i++) await add(attBufs[i].buf, attBufs[i].it.desc || '첨부');
+    for (var i = 0; i < attBufs.length; i++) await add(attBufs[i].buf, attBufs[i].it.desc || attBufs[i].it.work || attBufs[i].it.topic || '첨부');
     return new Blob([await out.save()], { type: 'application/pdf' });
   }
 

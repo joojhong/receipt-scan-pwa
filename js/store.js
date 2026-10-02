@@ -307,7 +307,10 @@
     row[COL.txAt] = a.txDate;
     row[COL.month] = a.txDate.slice(0, 7);
     row[COL.amount] = a.amount === '' || a.amount == null ? '' : Number(a.amount);
-    row[12] = a.desc || '';          // 내역
+    // 적은 내역은 인트라넷 칸으로: 경비 = 업무내용, 접대비·회의비 = 내용, 출장비 = 내역
+    if (a.category === '경비') row[F.work] = a.desc || '';
+    else if (a.category === '접대비' || a.category === '회의비') row[F.topic] = a.desc || '';
+    else row[12] = a.desc || '';
     row[13] = a.memo || '';
     row[17] = 0;
     row[18] = a.fileId;
