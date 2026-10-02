@@ -110,7 +110,7 @@
     h += section('카드 판독 정보', 'sec-card',
       '<div class="dt-2">' + field('카드사', '<input type="text" data-k="card" list="dtCards" maxlength="20" placeholder="예: 신한카드, 현금" value="' + esc(v.card) + '"' + dis + '>' +
           '<datalist id="dtCards">' + CARDS.map(function (c) { return '<option value="' + c + '">'; }).join('') + '</datalist>') +
-        (USE_CATS[v.category] ? field('카드 구분', '<div class="dt-ro">' + (v.cardType === '법인카드' ? '법인' + (v.corpCard ? ' · ' + esc(v.corpCard) : '') : '개인') + ' <span class="opt">(위 사용구분에서 바꿈)</span></div>') :
+        (USE_CATS[v.category] || v.category === '경비' ? field('카드 구분', '<div class="dt-ro">' + (v.cardType === '법인카드' ? '법인' + (v.corpCard ? ' · ' + esc(v.corpCard) : '') : '개인') + ' <span class="opt">(위 ' + (v.category === '경비' ? '사용내역' : '사용구분') + '에서 바꿈)</span></div>') :
         field('카드 구분', '<div class="dt-seg dt-seg2">' + ['개인카드', '법인카드'].map(function (t) {
           return '<button type="button" data-k="cardType" data-v="' + (v.cardType === t ? '' : t) + '"' + (v.cardType === t ? ' class="on"' : '') + dis + '>' + t.replace('카드', '') + '</button>';
         }).join('') + '</div>')) + '</div>' +
@@ -178,6 +178,11 @@
     var opt = function (t) { return t + ' <span class="opt">(선택)</span>'; }; // 모두 선택 입력(시트에서 적어도 됨)
     var txt = function (k, max, ph) { return '<input type="text" data-k="' + k + '" maxlength="' + max + '"' + (ph ? ' placeholder="' + ph + '"' : '') + ' value="' + esc(v[k]) + '"' + dis + '>'; };
     if (v.category === '경비') {
+      // 인트라넷 월간경비: 사용내역(현금경비·법인카드)별로 아예 따로 청구
+      h += field('사용내역', '<div class="dt-seg dt-seg2">' +
+        '<button type="button" data-k="cardType" data-v="개인카드"' + (v.cardType !== '법인카드' ? ' class="on"' : '') + dis + '>현금경비</button>' +
+        '<button type="button" data-k="cardType" data-v="법인카드"' + (v.cardType === '법인카드' ? ' class="on"' : '') + dis + '>법인카드</button></div>', '', false,
+        '현금경비(개인 카드·현금)와 법인카드는 따로 PDF를 만듭니다');
       // 인트라넷 월간경비 칸 순서: 계정 · 업무내용 · (출발지·도착지·교통수단·운행시간·운행거리) · 업무용승용차
       h += field('계정', '<select data-k="account"' + dis + '><option value="">고르기</option>' + ACCOUNTS.map(function (a) {
         return '<option' + (v.account === a ? ' selected' : '') + '>' + esc(a) + '</option>';

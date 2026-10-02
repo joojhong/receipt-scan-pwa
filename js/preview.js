@@ -86,7 +86,8 @@
     var warns = [];
     // 사용구분(개인청구·법인카드)이 섞이면 갑지를 따로 만들어야 함
     var uses = {}; items.forEach(function (it) { var u = RSGapji.useType(it); (uses[u] = uses[u] || []).push(it.id); });
-    var mixed = withSheet && Object.keys(uses).length > 1;
+    var mixed = (withSheet || sel.category === '경비') && Object.keys(uses).length > 1; // 경비는 사용내역별로 아예 따로 청구
+    var useLabel = sel.category === '경비' ? { '개인청구': '현금경비', '법인카드': '법인카드' } : { '개인청구': '개인청구', '법인카드': '법인카드' };
     var lacks = REQUIRED[sel.category] ? items.map(function (it) { return { it: it, m: missingOf(sel.category, it) }; }).filter(function (x) { return x.m.length; }) : [];
     var noInfo = withSheet && !(info['사번'] && info['사원명'] && info['팀명']);
     if (sel.category === '출장비') {
@@ -110,8 +111,9 @@
       (RSGapji.KINDS.indexOf(sel.category) >= 0 ? '<div class="pv-mode" role="group" aria-label="PDF 구성">' + MODES.map(function (m) {
         return '<button type="button" data-mode="' + m[0] + '"' + (mode === m[0] ? ' class="on"' : '') + '>' + m[1] + '</button>';
       }).join('') + '</div>' : '') +
-      (mixed ? '<div class="banner warn">개인청구 ' + uses['개인청구'].length + '건과 법인카드 ' + uses['법인카드'].length + '건이 섞여 있습니다. 갑지는 사용구분별로 따로 만듭니다. 한쪽만 골라 주세요.' +
-        '<div class="pv-split"><button class="mini" type="button" data-use="개인청구">개인청구 ' + uses['개인청구'].length + '건만</button>' +
+      (mixed ? '<div class="banner warn">' + useLabel['개인청구'] + ' ' + uses['개인청구'].length + '건과 법인카드 ' + uses['법인카드'].length + '건이 섞여 있습니다. ' +
+        (sel.category === '경비' ? '경비는 사용내역(현금경비·법인카드)별로 따로 청구합니다.' : '갑지는 사용구분별로 따로 만듭니다.') + ' 한쪽만 골라 주세요.' +
+        '<div class="pv-split"><button class="mini" type="button" data-use="개인청구">' + useLabel['개인청구'] + ' ' + uses['개인청구'].length + '건만</button>' +
         '<button class="mini" type="button" data-use="법인카드">법인카드 ' + uses['법인카드'].length + '건만</button></div></div>' : '') +
       (lacks.length ? '<div class="banner warn" role="alert"><b>빈 칸이 있어 PDF를 만들 수 없습니다 (' + lacks.length + '건)</b>' +
         '<ul class="pv-lack">' + lacks.map(function (x) {
