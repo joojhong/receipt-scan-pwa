@@ -22,6 +22,18 @@
     return 'both';
   }
   function setMode(cat, m) { try { localStorage.setItem(MODE_KEY + cat, m); } catch (e) { /* 무시 */ } }
+  // PDF 전 필수 값(인트라넷 청구에 꼭 필요한 칸)
+  var REQUIRED = {
+    '경비': [['account', '계정']],
+    '접대비': [['topic', '내용'], ['guest', '접대상대방']],
+    '회의비': [['topic', '내용'], ['attendees', '회의참석자']]
+  };
+  function missingOf(cat, it) {
+    var m = [];
+    if (!it.hasAmount || !(Number(it.amount) > 0)) m.push('금액');
+    (REQUIRED[cat] || []).forEach(function (f) { if (!String(it[f[0]] || '').trim()) m.push(f[1]); });
+    return m;
+  }
   function claimMonth(items) { return mostCommon(items.map(function (it) { return it.month; })) || ''; }
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -62,6 +74,7 @@
     }
     var key = sel.category + '|' + sel.ids.join(',') + '|' + (sel.remake ? sel.remake.pdfId : '');
     if (!P || P.key !== key) start(sel, key);
+    else if (!P.busy && !P.savedPdf) P.items = sel.items.slice(); // 상세에서 고친 값(내용 등)을 바로 반영
 
     var items = P.items, sum = 0;
     items.forEach(function (it) { sum += it.amount || 0; });
@@ -73,6 +86,7 @@
     // 사용구분(개인청구·법인카드)이 섞이면 갑지를 따로 만들어야 함
     var uses = {}; items.forEach(function (it) { var u = RSGapji.useType(it); (uses[u] = uses[u] || []).push(it.id); });
     var mixed = withSheet && Object.keys(uses).length > 1;
+    var lacks = REQUIRED[sel.category] ? items.map(function (it) { return { it: it, m: missingOf(sel.category, it) }; }).filter(function (x) { return x.m.length; }) : [];
     var noInfo = withSheet && !(info['사번'] && info['사원명'] && info['팀명']);
     if (sel.category === '출장비') {
       var trips = {}; items.forEach(function (it) { trips[it.tripDate || '없음'] = 1; });
@@ -98,6 +112,11 @@
       (mixed ? '<div class="banner warn">개인청구 ' + uses['개인청구'].length + '건과 법인카드 ' + uses['법인카드'].length + '건이 섞여 있습니다. 갑지는 사용구분별로 따로 만듭니다. 한쪽만 골라 주세요.' +
         '<div class="pv-split"><button class="mini" type="button" data-use="개인청구">개인청구 ' + uses['개인청구'].length + '건만</button>' +
         '<button class="mini" type="button" data-use="법인카드">법인카드 ' + uses['법인카드'].length + '건만</button></div></div>' : '') +
+      (lacks.length ? '<div class="banner warn" role="alert"><b>빈 칸이 있어 PDF를 만들 수 없습니다 (' + lacks.length + '건)</b>' +
+        '<ul class="pv-lack">' + lacks.map(function (x) {
+          var d = String(x.it.txAt || x.it.capturedAt || '').slice(5, 10).replace('-', '/');
+          return '<li><button type="button" class="linkish" data-fix="' + esc(x.it.id) + '">' + esc(d + ' ' + (x.it.merchant || '') + (x.it.hasAmount ? ' · ' + won(x.it.amount) + '원' : '')) + '</button> — ' + esc(x.m.join(', ')) + ' 없음</li>';
+        }).join('') + '</ul>항목을 누르면 상세 화면에서 바로 채울 수 있습니다. 구글 시트에서 채워도 됩니다.</div>' : '') +
       (noInfo ? '<div class="banner">갑지 머리글(사번·팀명·사원명 등)이 비어 있습니다. <button class="mini" id="pvMe" type="button">내 정보 채우기</button></div>' : '') +
       (P.error ? '<div class="banner warn" role="alert">' + esc(P.error) + ' <button class="mini" id="pvRetry" type="button">다시 시도</button></div>' : '');
 
@@ -122,7 +141,7 @@
       h += '<p class="hint">흰 종이 = A4 한 장(여백 10mm). 영수증은 실제 크기로 놓고, 넘치는 쪽만 조금 줄입니다(85%까지).</p>';
     }
     h += '<div class="dt-bar"><button class="btn-alt pv-alt" id="pvBack2" type="button">고르기로</button>' +
-      '<button class="cta" id="pvSave" type="button"' + (P.pages && !P.busy && !mixed && navigator.onLine ? '' : ' disabled') + '>' +
+      '<button class="cta" id="pvSave" type="button"' + (P.pages && !P.busy && !mixed && !lacks.length && navigator.onLine ? '' : ' disabled') + '>' +
         (P.busy ? esc(P.busy) : P.savedPdf ? '청구완료 처리 다시 시도' : remake ? 'PDF 바꾸고 청구완료' : 'PDF로 저장하고 청구완료') + '</button></div><div class="bx-space"></div>';
     if (!navigator.onLine) h = h.replace('<div class="dt-bar">', '<div class="banner">온라인에서만 PDF를 저장할 수 있습니다.</div><div class="dt-bar">');
 
@@ -135,6 +154,7 @@
       b.onclick = function () { if (P.busy || P.savedPdf) return; setMode(sel.category, b.dataset.mode); redraw(); };
     });
     root.querySelectorAll('[data-use]').forEach(function (b) { b.onclick = function () { ctx.narrow(uses[b.dataset.use]); }; });
+    root.querySelectorAll('[data-fix]').forEach(function (b) { b.onclick = function () { ctx.openDetail(b.dataset.fix); }; });
     var me = root.querySelector('#pvMe');
     if (me) me.onclick = function () { ctx.gotoMe(); };
     var rt = root.querySelector('#pvRetry');
@@ -145,6 +165,7 @@
   async function save(sel, name, mode, info) {
     var p = P;
     if (p.busy) return;
+    if (REQUIRED[sel.category] && p.items.some(function (it) { return missingOf(sel.category, it).length; })) return;
     p.error = '';
     var remake = sel.remake || null;
     var byId = {}; p.items.forEach(function (it) { byId[it.id] = it; });

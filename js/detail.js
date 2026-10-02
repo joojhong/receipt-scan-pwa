@@ -156,9 +156,9 @@
     var txt = function (k, max, ph) { return '<input type="text" data-k="' + k + '" maxlength="' + max + '"' + (ph ? ' placeholder="' + ph + '"' : '') + ' value="' + esc(v[k]) + '"' + dis + '>'; };
     if (v.category === '경비') {
       // 인트라넷 월간경비 칸 순서: 계정 · 업무내용 · (출발지·도착지·교통수단·운행시간·운행거리) · 업무용승용차
-      h += field(opt('계정'), '<select data-k="account"' + dis + '><option value="">고르기</option>' + ACCOUNTS.map(function (a) {
+      h += field('계정', '<select data-k="account"' + dis + '><option value="">고르기</option>' + ACCOUNTS.map(function (a) {
         return '<option' + (v.account === a ? ' selected' : '') + '>' + esc(a) + '</option>';
-      }).join('') + (v.account && ACCOUNTS.indexOf(v.account) < 0 ? '<option selected>' + esc(v.account) + '</option>' : '') + '</select>');
+      }).join('') + (v.account && ACCOUNTS.indexOf(v.account) < 0 ? '<option selected>' + esc(v.account) + '</option>' : '') + '</select>', '', true);
       if (v.account === FUEL_ACCOUNT) h += field(opt('업무내용 = 주유량(L)'), '<div class="dt-won"><input type="text" inputmode="decimal" data-k="fuel" value="' + esc(v.fuel) + '"' + dis + '><span>L</span></div>', errs.fuel, false, '주유비는 업무내용 칸에 주유량을 적습니다');
       else h += field(opt('업무내용'), txt('work', 100, '예: IT 외주업체 미팅'));
       // 계정별 운행 정보(인트라넷 기준): 교통비 = 출발지·도착지·교통수단, 자차운행비 = 출발지·도착지·운행시간(분)·운행거리. 주유비는 없음
@@ -193,12 +193,12 @@
       }
     }
     if (v.category === '접대비') {
-      h += field(opt('내용'), txt('topic', 100, '예: 영진종합상사 대표 미팅'));
-      h += field(opt('접대상대방'), txt('guest', 60, '예: 정태금'));
+      h += field('내용', txt('topic', 100, '예: 영진종합상사 대표 미팅'), '', true);
+      h += field('접대상대방', txt('guest', 60, '예: 정태금'), '', true);
     }
     if (v.category === '회의비') {
-      h += field(opt('내용'), txt('topic', 100, '예: 양산사무소 점심 식사'));
-      h += field(opt('참석자'), txt('attendees', 200, '예: 박태영, 손희진'), '', false, '나중에 구글 시트 "참석자" 열에 적어도 됩니다');
+      h += field('내용', txt('topic', 100, '예: 양산사무소 점심 식사'), '', true);
+      h += field('회의참석자', txt('attendees', 200, '예: 박태영, 손희진'), '', true, '나중에 구글 시트 "참석자" 열에 적어도 됩니다');
     }
     if (v.category === '출장비') h += field(opt('출장일'), '<input type="date" data-k="tripDate" value="' + esc(v.tripDate) + '"' + dis + '>', errs.tripDate, false, '보통 출장 첫째 날. 같은 출장의 영수증을 묶는 데 씁니다');
     return h;

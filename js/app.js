@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '0.12.2';
+  var APP_VERSION = '0.12.3';
   var CATEGORIES = ['경비', '접대비', '회의비', '출장비'];
   var CACHE_KEY = 'rs.cache.receipts';
   var SET_KEY = 'rs.cache.settings';
@@ -489,7 +489,7 @@
       receipt: findItem(id),
       offline: state.offline || !navigator.onLine,
       toast: toast,
-      back: function () { location.hash = '#/box'; },
+      back: function () { var b = state.detailBack || '#/box'; state.detailBack = ''; location.hash = b; },
       isActive: function () { return currentTab() === 'detail'; },
       rerender: render,
       edit: editReceipt,
@@ -611,6 +611,7 @@
       info: function () { return state.settings || {}; },
       narrow: function (ids) { state.selection = Object.assign({}, state.selection, { ids: ids }); render(); },
       gotoMe: function () { state.meBack = '#/preview'; location.hash = '#/me'; },
+      openDetail: function (id) { state.detailBack = '#/preview'; location.hash = '#/detail?id=' + encodeURIComponent(id); },
       finish: function () { state.selection = null; RSBox.endRemake(); location.hash = '#/box'; },
       photoBlob: async function (r) {
         var b = RSBox.localBlob(r.id);
