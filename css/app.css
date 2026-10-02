@@ -428,3 +428,13 @@ button.banner{display:block;width:calc(100% - 40px);text-align:left;border:0;cur
 .cd-row input{flex:1;min-width:0;height:42px;border:1px solid var(--line);border-radius:10px;padding:0 12px;font-size:15px}
 .cd-btns{display:flex;gap:8px;justify-content:space-between;padding:8px 0 4px}
 .dt-place{margin-left:8px;font-size:12px;font-weight:400;color:var(--sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:68%;display:inline-block;vertical-align:bottom}
+.bdg.b-file{background:#E8F1EC;color:#1E6B45}
+.bx-amt.chk{color:var(--sub)}
+.bx-chk{display:block;font-size:10px;font-weight:500;color:var(--sub);text-align:right}
+.at-file{display:flex;align-items:center;justify-content:center;height:48px;border:1.5px dashed #C9CCD6;border-radius:12px;font-size:15px;color:var(--ink);cursor:pointer;background:#FAFAF8;padding:0 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dt-file{margin:0 20px 14px;padding:22px 16px;border:1px solid var(--line);border-radius:16px;background:#fff;display:flex;align-items:center;gap:12px}
+.dt-file b{flex:1;min-width:0;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pv-att{margin:0 20px;aspect-ratio:210/297;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.12),0 4px 14px rgba(0,0,0,.06);border-radius:2px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--sub);font-size:14px;text-align:center;padding:20px}
+.pv-att b{color:var(--ink);font-size:15px}
+.pv-front{margin:0 20px 14px}
+.pv-att .mini{margin-top:4px}
