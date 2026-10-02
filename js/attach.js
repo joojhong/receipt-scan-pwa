@@ -1,6 +1,7 @@
 /* 파일 첨부(4단계 5번) = 영수증을 손으로 1건 등록
    - AI 판독이 안 되는 영수증 묶음(통신비 내역서, 한 달 치 하이패스 내역 등)을 PDF로 올리고 거래일·금액·결제 수단·내역을 직접 적음
    - 청구 PDF에는 찍은 영수증 쪽 뒤에 올린 PDF가 그대로 붙고, 갑지에는 1줄로 들어감
+   - PDF는 여러 개 올릴 수 있음(올린 순서대로 1개로 합침, ▲로 순서 변경). 암호 PDF는 비밀번호를 한 번 물어 풂
    - 순서: 구분 → PDF → 거래일·금액·결제 수단 → 내역 → 저장 → 상세에서 인트라넷 칸(계정 등) 채움 */
 (function () {
   'use strict';
@@ -30,7 +31,7 @@
 
   function render(root, c) {
     ctx = c;
-    if (!A) A = { category: CATEGORIES.indexOf(c.category) >= 0 ? c.category : '경비', file: null, date: today(),
+    if (!A) A = { category: CATEGORIES.indexOf(c.category) >= 0 ? c.category : '경비', files: [], date: today(),
       amount: '', pay: '개인카드', corpCard: '', desc: '', busy: '', error: '' };
     var trip = A.category === '출장비';
     var h = '<header class="dt-top"><button class="icon-btn" id="atBack" aria-label="뒤로">' + BACK + '</button><h1>파일 첨부</h1></header>' +
@@ -38,13 +39,18 @@
     if (A.error) h += '<div class="banner warn" role="alert">' + esc(A.error) + '</div>';
     h += '<section class="dt-sec"><div class="dt-sec-h">무엇을 올리나요</div><div class="dt-sec-b">' +
       field('구분', seg('category', CATEGORIES, A.category), true) +
-      field('PDF 파일', '<label class="at-file"><input type="file" id="atFile" accept="application/pdf,.pdf" hidden>' +
-        '<span>' + (A.checking ? esc(A.checking) : A.file ? esc(A.file.name) + ' · ' + (A.file.size / 1048576).toFixed(1) + 'MB' + (A.unlocked ? ' · 암호 풀림' : '') :
-          A.lock ? esc(A.lock.name) + ' · 암호 걸림' : 'PDF 고르기') + '</span></label>', true,
-        A.unlocked ? '암호를 풀어 암호 없는 PDF로 바꿨습니다. 비밀번호는 저장하지 않았습니다' : '') +
-      (A.lock && !A.file ? field('PDF 비밀번호', '<div class="at-pw"><input type="password" id="atPw" autocomplete="off" placeholder="예: 생년월일 6자리">' +
-          '<button type="button" class="mini ok" id="atUnlock"' + (A.checking ? ' disabled' : '') + '>암호 풀기</button></div>', true,
-          A.lock.wrong ? '비밀번호가 맞지 않습니다. 다시 입력해 주세요' : '암호가 걸린 PDF입니다. 비밀번호를 한 번 입력하면 암호 없는 PDF로 바꿔 올립니다(비밀번호는 저장하지 않음)') : '') +
+      field('PDF 파일' + (A.files.length > 1 ? ' (' + A.files.length + '개 · 올린 순서대로 1개로 합침)' : ''), A.files.map(function (f, i) {
+        var st = f.checking ? esc(f.checking) : f.lock ? '암호 걸림' : f.unlocked ? '암호 풀림' : '';
+        return '<div class="at-row"><span class="at-no">' + (i + 1) + '</span><span class="at-name">' + esc(f.name) +
+          '<small>' + (f.file ? (f.file.size / 1048576).toFixed(1) + 'MB' : '') + (st ? (f.file ? ' · ' : '') + st : '') + '</small></span>' +
+          '<button type="button" class="mini" data-up="' + i + '"' + (i ? '' : ' disabled') + ' aria-label="위로">▲</button>' +
+          '<button type="button" class="mini" data-del="' + i + '" aria-label="빼기">빼기</button></div>' +
+          (f.lock ? '<div class="at-pw"><input type="password" data-pw="' + i + '" autocomplete="off" placeholder="비밀번호 (예: 생년월일 6자리)">' +
+            '<button type="button" class="mini ok" data-unlock="' + i + '"' + (f.checking ? ' disabled' : '') + '>암호 풀기</button></div>' +
+            '<span class="dt-hint">' + (f.lock.wrong ? '비밀번호가 맞지 않습니다. 다시 입력해 주세요' : '암호가 걸린 PDF입니다. 비밀번호를 한 번 입력하면 암호 없는 PDF로 바꿔 올립니다(비밀번호는 저장하지 않음)') + '</span>' : '');
+      }).join('') +
+        '<label class="at-file"><input type="file" id="atFile" accept="application/pdf,.pdf" multiple hidden><span>' + (A.files.length ? '+ PDF 더 추가' : 'PDF 고르기 (여러 개 가능)') + '</span></label>', true,
+        A.files.length > 1 ? '위에서부터 순서대로 한 PDF로 합쳐집니다. ▲로 순서를 바꿀 수 있습니다' : '') +
       '</div></section>';
     h += '<section class="dt-sec"><div class="dt-sec-h">결제</div><div class="dt-sec-b">' +
       '<div class="dt-2">' + field(trip ? '출장일' : '거래일', '<input type="date" data-a="date" max="' + today() + '" value="' + esc(A.date) + '">', true,
@@ -66,7 +72,11 @@
   }
 
   function validate() {
-    if (!A.file) return A.lock ? 'PDF 암호를 풀어 주세요' : 'PDF 파일을 골라 주세요';
+    if (!A.files.length) return 'PDF 파일을 골라 주세요';
+    if (A.files.some(function (f) { return f.checking; })) return 'PDF 확인 중입니다';
+    if (A.files.some(function (f) { return !f.file; })) return '암호 걸린 PDF의 암호를 풀어 주세요';
+    var tot = A.files.reduce(function (s, f) { return s + f.file.size; }, 0);
+    if (tot > MAX) return 'PDF를 합치면 10MB가 넘습니다(지금 ' + (tot / 1048576).toFixed(1) + 'MB). 일부를 빼 주세요';
     if (!A.date) return '날짜를 적어 주세요';
     if (!(Number(A.amount) > 0)) return '금액을 적어 주세요';
     if (!A.desc.trim()) return '내역을 적어 주세요';
@@ -101,59 +111,83 @@
     });
     var f = root.querySelector('#atFile');
     f.onchange = function () {
-      var file = f.files && f.files[0];
-      if (!file) return;
-      if (!/pdf$/i.test(file.type) && !/\.pdf$/i.test(file.name)) { ctx.toast('PDF 파일만 올릴 수 있습니다'); return; }
-      if (file.size > MAX) { ctx.toast('10MB가 넘는 파일은 올릴 수 없습니다 (인트라넷 첨부 한도)'); return; }
-      A.file = null; A.lock = null; A.unlocked = false;
-      if (!A.desc) A.desc = file.name.replace(/\.pdf$/i, '').slice(0, 100);
-      check(file);
+      var list = Array.prototype.slice.call(f.files || []);
+      list.forEach(function (file) {
+        if (!/pdf$/i.test(file.type) && !/\.pdf$/i.test(file.name)) { ctx.toast('PDF 파일만 올릴 수 있습니다: ' + file.name); return; }
+        if (file.size > MAX) { ctx.toast('10MB가 넘는 파일은 올릴 수 없습니다: ' + file.name); return; }
+        var item = { name: file.name, file: null, lock: null, unlocked: false, checking: 'PDF 확인 중…' };
+        A.files.push(item);
+        if (!A.desc) A.desc = file.name.replace(/\.pdf$/i, '').slice(0, 100);
+        check(item, file);
+      });
+      redraw();
     };
-    var ub = root.querySelector('#atUnlock'), pw = root.querySelector('#atPw');
-    if (ub) ub.onclick = function () { unlock(pw.value); };
-    if (pw) pw.onkeydown = function (e) { if (e.key === 'Enter') unlock(pw.value); };
+    root.querySelectorAll('[data-del]').forEach(function (b) { b.onclick = function () { A.files.splice(+b.dataset.del, 1); redraw(); }; });
+    root.querySelectorAll('[data-up]').forEach(function (b) {
+      b.onclick = function () { var i = +b.dataset.up; if (i > 0) { var x = A.files[i]; A.files[i] = A.files[i - 1]; A.files[i - 1] = x; redraw(); } };
+    });
+    root.querySelectorAll('[data-unlock]').forEach(function (b) {
+      var i = +b.dataset.unlock, pw = root.querySelector('[data-pw="' + i + '"]');
+      b.onclick = function () { unlock(A.files[i], pw.value); };
+      pw.onkeydown = function (e) { if (e.key === 'Enter') unlock(A.files[i], pw.value); };
+    });
     var s = root.querySelector('#atSave');
     s.onclick = save;
   }
 
   // 고른 PDF가 암호 PDF인지 확인. 열람 암호 없이 열리는 것(편집 제한만 걸린 것)은 바로 풀어 줌
-  async function check(file) {
-    A.checking = 'PDF 확인 중…'; redraw();
+  async function check(item, file) {
     try {
       var buf = await file.arrayBuffer();
-      if (!(await RSPdf.isEncrypted(buf))) { A.file = file; return; }
-      A.lock = { name: file.name, buf: buf, wrong: false };
-      try { await unlockNow('', true); } catch (e) { /* 비밀번호 필요 → 입력 칸 보여 줌 */ }
+      if (!(await RSPdf.isEncrypted(buf))) { item.file = file; return; }
+      item.lock = { buf: buf, wrong: false };
+      try { await unlockNow(item, '', true); } catch (e) { /* 비밀번호 필요 → 입력 칸 보여 줌 */ }
     } catch (e) {
-      ctx.toast(e.message || 'PDF를 확인하지 못했습니다');
-    } finally { A.checking = ''; redraw(); }
+      ctx.toast((e.message || 'PDF를 확인하지 못했습니다') + ': ' + item.name);
+      var i = A ? A.files.indexOf(item) : -1; if (i >= 0) A.files.splice(i, 1);
+    } finally { item.checking = ''; if (A) redraw(); }
   }
-  async function unlockNow(password, quiet) {
-    var lk = A.lock;
-    var blob = await RSPdf.unlock(lk.buf, password, function (m) { A.checking = m; redraw(); });
+  async function unlockNow(item, password, quiet) {
+    var blob = await RSPdf.unlock(item.lock.buf, password, function (m) { item.checking = m; if (A) redraw(); });
     if (blob.size > MAX) throw new Error('암호를 푼 PDF가 10MB를 넘습니다. 쪽수를 나눠 올려 주세요');
-    A.file = new File([blob], lk.name.replace(/\.pdf$/i, '') + '.pdf', { type: 'application/pdf' });
-    A.unlocked = true; A.lock = null;
+    item.file = new File([blob], item.name, { type: 'application/pdf' });
+    item.unlocked = true; item.lock = null;
     if (!quiet) ctx.toast('암호를 풀었습니다');
   }
-  async function unlock(password) {
-    if (!A.lock || A.checking) return;
+  async function unlock(item, password) {
+    if (!item || !item.lock || item.checking) return;
     if (!password) { ctx.toast('비밀번호를 입력해 주세요'); return; }
-    A.checking = '암호 푸는 중…'; redraw();
-    try { await unlockNow(password); }
+    item.checking = '암호 푸는 중…'; redraw();
+    try { await unlockNow(item, password); }
     catch (e) {
-      if (e.pw === 'wrong' || e.pw === 'need') A.lock.wrong = true;
+      if (e.pw === 'wrong' || e.pw === 'need') item.lock.wrong = true;
       else ctx.toast(e.message || '암호를 풀지 못했습니다');
-    } finally { A.checking = ''; redraw(); }
+    } finally { item.checking = ''; if (A) redraw(); }
+  }
+
+  // 여러 PDF를 올린 순서대로 1개로 합침
+  async function joined(onStep) {
+    if (A.files.length === 1) return A.files[0].file;
+    onStep('PDF ' + A.files.length + '개를 합치는 중…');
+    var L = await RSPdf.lib('pdflib'), out = await L.PDFDocument.create();
+    for (var i = 0; i < A.files.length; i++) {
+      var doc = await L.PDFDocument.load(await A.files[i].file.arrayBuffer());
+      (await out.copyPages(doc, doc.getPageIndices())).forEach(function (pg) { out.addPage(pg); });
+    }
+    var blob = new Blob([await out.save()], { type: 'application/pdf' });
+    if (blob.size > MAX) throw new Error('합친 PDF가 10MB를 넘습니다. 일부를 빼 주세요');
+    return new File([blob], (A.desc.trim() || 'attach') + '.pdf', { type: 'application/pdf' });
   }
 
   async function save() {
     var msg = validate();
     if (msg) { ctx.toast(msg); return; }
-    A.busy = 'Drive에 올리는 중…'; A.error = ''; redraw();
+    A.busy = 'PDF 준비 중…'; A.error = ''; redraw();
     try {
+      var file = await joined(function (m) { A.busy = m; redraw(); });
+      A.busy = 'Drive에 올리는 중…'; redraw();
       var id = await ctx.saveAttachment({
-        category: A.category, file: A.file, txDate: A.date,
+        category: A.category, file: file, txDate: A.date,
         amount: A.amount === '' ? '' : Number(A.amount), cardType: A.pay, corpCard: A.pay === '법인카드' ? A.corpCard : '',
         desc: A.desc.trim()
       }, function (m) { A.busy = m; redraw(); });
