@@ -4,6 +4,7 @@
 //   2) 앱 사용 승인: 관리자가 승인한 계정만 토큰을 받음(Firestore users 컬렉션)
 //   3) 관리자 화면용: 사용자 목록·승인·거절·사용 중지
 //   4) 이름: Google 이름을 받아 두고, 직원이 직접 고친 이름(예: 홍길동 대리)을 표시 이름으로 씀
+//   5) 법인카드 목록: 관리자가 앱에서 고치고(POST /v1/admin/cards), 모든 직원은 로그인·토큰 갱신 때 함께 받음
 // 5단계에서 추가: POST /v1/ocr (DeepSeek 판독)
 //
 // 환경변수
@@ -40,6 +41,21 @@ const verifier = new OAuth2Client(CLIENT_ID);
 let db = null;
 function firestore() { if (!db) db = new Firestore(); return db; }
 const users = () => firestore().collection('users');
+const configDoc = () => firestore().collection('config').doc('corpCards');
+
+// 법인카드 목록(관리자가 앱에서 바꿈). 문서가 없으면 처음 받은 5장을 기본으로 씀
+const DEFAULT_CARDS = ['NK하나9798', 'NK하나6781', 'NK하나0846', 'NK하나0047', 'NK하나5285'];
+const CARD_MAX = 30, CARD_LEN = 30;
+let cardCache = null, cardAt = 0;
+async function getCards() {
+  if (cardCache && Date.now() - cardAt < 60000) return cardCache;
+  try {
+    const snap = await configDoc().get();
+    cardCache = snap.exists && Array.isArray(snap.data().cards) ? snap.data().cards : DEFAULT_CARDS.slice();
+    cardAt = Date.now();
+  } catch (e) { console.warn('cards read failed', e && e.message); return cardCache || DEFAULT_CARDS.slice(); }
+  return cardCache;
+}
 
 function isAdmin(email) { return ADMIN_EMAILS.includes(email); }
 
@@ -143,7 +159,7 @@ const STATUS_MESSAGE = {
   disabled: '관리자가 사용을 중지했습니다'
 };
 
-function tokenReply(data, ident, ap) {
+function tokenReply(data, ident, ap, cards) {
   const out = {
     accessToken: data.access_token,
     expiresIn: data.expires_in,
@@ -153,7 +169,8 @@ function tokenReply(data, ident, ap) {
     status: ap.status,
     name: ap.name,
     googleName: ap.googleName,
-    isAdmin: isAdmin(ident.email)
+    isAdmin: isAdmin(ident.email),
+    corpCards: cards || []
   };
   if (data.refresh_token) out.refreshToken = data.refresh_token;
   return out;
@@ -180,7 +197,7 @@ async function exchange(req, res) {
   const ident = await identityFromIdToken(t.data.id_token);
   const ap = await approvalOf(ident);
   if (ap.status !== 'approved') return notApproved(res, ident, ap, t.data.refresh_token);
-  send(res, 200, tokenReply(t.data, ident, ap));
+  send(res, 200, tokenReply(t.data, ident, ap, await getCards()));
 }
 
 // POST /v1/auth/refresh  {refreshToken}
@@ -200,7 +217,7 @@ async function refresh(req, res) {
   }
   const ap = await approvalOf(ident);
   if (ap.status !== 'approved') return notApproved(res, ident, ap);
-  send(res, 200, tokenReply(t.data, ident, ap));
+  send(res, 200, tokenReply(t.data, ident, ap, await getCards()));
 }
 
 // refresh token으로 본인 확인(승인 대기 중인 사람도 가능). 실패하면 null
@@ -280,6 +297,20 @@ async function adminSetStatus(req, res) {
   send(res, 200, { ok: true, email: target, status });
 }
 
+// POST /v1/admin/cards  {cards: ['NK하나9798', …]}  (법인카드 목록 바꾸기)
+async function adminSetCards(req, res) {
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  const { cards } = await readJson(req);
+  if (!Array.isArray(cards)) return fail(res, 400, 'BAD_REQUEST', '요청 형식 오류');
+  const seen = {}, list = [];
+  cards.forEach(c => { const n = cleanName(c); if (n && n.length <= CARD_LEN && !seen[n]) { seen[n] = 1; list.push(n); } });
+  if (list.length > CARD_MAX) return fail(res, 400, 'TOO_MANY', '법인카드는 ' + CARD_MAX + '장까지 등록할 수 있습니다');
+  await configDoc().set({ cards: list, updatedAt: FieldValue.serverTimestamp(), updatedBy: admin.email });
+  cardCache = list; cardAt = Date.now();
+  send(res, 200, { ok: true, cards: list });
+}
+
 const routes = {
   'POST /v1/auth/exchange': exchange,
   'POST /v1/auth/refresh': refresh,
@@ -287,6 +318,7 @@ const routes = {
   'POST /v1/profile/name': setMyName,
   'GET /v1/admin/users': adminList,
   'POST /v1/admin/users/status': adminSetStatus,
+  'POST /v1/admin/cards': adminSetCards,
   // Cloud Run은 /healthz 주소를 자체 용도로 예약해 쓰므로 다른 이름을 씀
   'GET /v1/health': (req, res) => send(res, 200, { ok: true })
 };
