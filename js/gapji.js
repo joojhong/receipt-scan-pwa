@@ -9,6 +9,7 @@
   var CAR_ACCOUNTS = ['8220001-주유비(회사차량)', '8220002-차량유지관리비(회사 차량)', '8220003-주차/통행료'];
   var FUEL_ACCOUNT = '8220001-주유비(회사차량)';
   var OWN_CAR_ACCOUNT = '8120001-자차운행비(별도서류첨부)';
+  var PARKING_ACCOUNT = '8220003-주차/통행료';
   var FONT = '"Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif';
 
   function won(n) { return Number(n || 0).toLocaleString('ko-KR'); }
@@ -43,7 +44,10 @@
       var d = dateOf(it);
       if (kind === '경비') {
         var acc = it.account || '', car = '';
-        if (CAR_ACCOUNTS.indexOf(acc) >= 0 && info['회사 차량'] !== '아니오') car = !it.car || it.car === info['차량번호'] ? companyCar(info) || it.car : it.car; // 번호만 적혀 있으면 "번호(사원명)"으로
+        if (CAR_ACCOUNTS.indexOf(acc) >= 0 && info['회사 차량'] !== '아니오') {
+          if (acc === PARKING_ACCOUNT && !it.car) car = '';                          // 주차/통행료는 차량 선택 사항
+          else car = !it.car || it.car === info['차량번호'] ? companyCar(info) || it.car : it.car;
+        } // 번호만 적혀 있으면 "번호(사원명)"으로
         return [d, acc.replace(/^\d+-/, ''), acc === FUEL_ACCOUNT ? (it.fuel || '') : (it.work || ''), won(it.amount),
           it.from || '', it.to || '', it.transport || '', it.driveTime || '',
           acc === OWN_CAR_ACCOUNT && it.km !== '' && it.km != null ? it.km + ' km' : '', car];

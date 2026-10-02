@@ -15,6 +15,7 @@
   var CARDS = ['신한카드', '삼성카드', '현대카드', 'KB국민카드', '롯데카드', '하나카드', '우리카드', 'BC카드', 'NH농협카드', '현금'];
   var FUEL_ACCOUNT = '8220001-주유비(회사차량)';
   // 회사 차량일 때 업무용승용차 칸이 보이는 계정(주유비·차량유지관리비·주차/통행료)
+  var TAXI_ACCOUNT = '8120003-교통비(대중교통 외)', OWN_CAR_ACCOUNT = '8120001-자차운행비(별도서류첨부)', PARKING_ACCOUNT = '8220003-주차/통행료';
   var CAR_ACCOUNTS = ['8220001-주유비(회사차량)', '8220002-차량유지관리비(회사 차량)', '8220003-주차/통행료'];
 
   var D = null;    // { id, orig, v(편집값), monthFollows, saving, error, photo }
@@ -160,18 +161,35 @@
       }).join('') + (v.account && ACCOUNTS.indexOf(v.account) < 0 ? '<option selected>' + esc(v.account) + '</option>' : '') + '</select>');
       if (v.account === FUEL_ACCOUNT) h += field(opt('업무내용 = 주유량(L)'), '<div class="dt-won"><input type="text" inputmode="decimal" data-k="fuel" value="' + esc(v.fuel) + '"' + dis + '><span>L</span></div>', errs.fuel, false, '주유비는 업무내용 칸에 주유량을 적습니다');
       else h += field(opt('업무내용'), txt('work', 100, '예: IT 외주업체 미팅'));
-      h += '<details class="dt-more"><summary>운행 정보 (출발지·도착지·교통수단·운행시간·운행거리)</summary>' +
-        '<div class="dt-2">' + field('출발지', txt('from', 40)) + field('도착지', txt('to', 40)) + '</div>' +
-        '<div class="dt-2">' + field('교통수단', txt('transport', 20, '예: 자가용')) + field('운행시간', txt('driveTime', 20, '예: 1시간 30분')) + '</div>' +
-        field('운행거리', '<div class="dt-won"><input type="text" inputmode="decimal" data-k="km" value="' + esc(v.km) + '"' + dis + '><span>km</span></div>', errs.km) +
-      '</details>';
+      // 계정별 운행 정보(인트라넷 기준): 교통비 = 출발지·도착지·교통수단, 자차운행비 = 출발지·도착지·운행시간(분)·운행거리. 주유비는 없음
+      var kmIn = '<div class="dt-won"><input type="text" inputmode="decimal" data-k="km" value="' + esc(v.km) + '"' + dis + '><span>km</span></div>';
+      var minIn = '<div class="dt-won"><input type="text" inputmode="numeric" data-k="driveTime" placeholder="예: 30" value="' + esc(v.driveTime) + '"' + dis + '><span>분</span></div>';
+      if (v.account === TAXI_ACCOUNT) {
+        h += '<div class="dt-2">' + field('출발지', txt('from', 40, '예: 창원'), '', true) + field('도착지', txt('to', 40, '예: 양산'), '', true) + '</div>' +
+          field('교통수단', txt('transport', 20, '예: 택시'), '', true);
+      } else if (v.account === OWN_CAR_ACCOUNT) {
+        h += '<div class="dt-2">' + field('출발지', txt('from', 40, '예: 창원사무소'), '', true) + field('도착지', txt('to', 40, '예: 한광공구'), '', true) + '</div>' +
+          '<div class="dt-2">' + field('운행시간', minIn, errs.driveTime, true) + field('운행거리', kmIn, errs.km, true) + '</div>';
+      } else if (v.account !== FUEL_ACCOUNT) {
+        h += '<details class="dt-more"><summary>운행 정보 (출발지·도착지·교통수단·운행시간·운행거리)</summary>' +
+          '<div class="dt-2">' + field('출발지', txt('from', 40)) + field('도착지', txt('to', 40)) + '</div>' +
+          '<div class="dt-2">' + field('교통수단', txt('transport', 20, '예: 택시')) + field('운행시간', minIn) + '</div>' +
+          field('운행거리', kmIn, errs.km) +
+        '</details>';
+      }
       var info = ctx.settings() || {};
       if (CAR_ACCOUNTS.indexOf(v.account) >= 0 && info['회사 차량'] !== '아니오') {
-        // 회사 차량을 등록해 두었으면 "차량번호(사원명)"을 채워 둠(저장하면 시트에도 기록)
         var def = RSGapji.companyCar(info);
-        if (!v.car && def && !D.orig.car) { v.car = def; D.base.carDefault = def; }
-        h += field(opt('업무용승용차'), txt('car', 40, '예: 183허5450'), '', false,
-          def ? '내 정보에 등록한 회사 차량입니다' : '처음 적고 저장하면 회사 차량인지 한 번 묻고 내 정보에 등록합니다');
+        if (v.account === PARKING_ACCOUNT) {
+          // 주차/통행료는 차량이 선택 사항: 비워 두고, 필요하면 버튼으로 넣음
+          h += field(opt('업무용승용차'), txt('car', 40, '예: 183허5450'), '', false, '') +
+            (def && v.car !== def ? '<div class="dt-f" style="padding-top:0"><button type="button" class="mini" data-k="car" data-v="' + esc(def) + '"' + dis + '>회사 차량 넣기 (' + esc(def) + ')</button></div>' : '');
+        } else {
+          // 주유비·차량유지관리비: 등록한 회사 차량 "차량번호(사원명)"을 채워 둠(저장하면 시트에도 기록)
+          if (!v.car && def && !D.orig.car) { v.car = def; D.base.carDefault = def; }
+          h += field(opt('업무용승용차'), txt('car', 40, '예: 183허5450'), '', false,
+            def ? '내 정보에 등록한 회사 차량입니다' : '처음 적고 저장하면 회사 차량인지 한 번 묻고 내 정보에 등록합니다');
+        }
       }
     }
     if (v.category === '접대비') {
@@ -194,6 +212,7 @@
     if (v.amount !== '' && !(Number(v.amount) >= 1 && Number.isInteger(Number(v.amount)))) e.amount = '1원 이상 정수로 적어 주세요';
     if (v.fuel !== '' && !(Number(v.fuel) > 0)) e.fuel = '숫자로 적어 주세요';
     if (v.km !== '' && !(Number(v.km) >= 0)) e.km = '숫자로 적어 주세요';
+    if (v.account === OWN_CAR_ACCOUNT && v.driveTime !== '' && !/^\d+$/.test(String(v.driveTime))) e.driveTime = '분 단위 숫자로 적어 주세요';
     if (!(Number(v.widthMm) >= 20 && Number(v.widthMm) <= 300)) e.widthMm = '폭은 20~300mm로 적어 주세요';
     if (D.orig.st === '보관중' && (!v.date || v.amount === '')) {
       if (!v.date) e.date = '보관중 영수증은 거래일이 필요합니다';
@@ -340,7 +359,7 @@
       else ch[k] = v[k];
     });
     // 기본값으로 채워 둔 차량을 저장할 때 함께 기록
-    if (v.category === '경비' && CAR_ACCOUNTS.indexOf(v.account) >= 0 && v.car && !D.orig.car && ch.car === undefined && keys.length) ch.car = v.car;
+    if (v.category === '경비' && CAR_ACCOUNTS.indexOf(v.account) >= 0 && v.account !== PARKING_ACCOUNT && v.car && !D.orig.car && ch.car === undefined && keys.length) ch.car = v.car;
     // 판독대기·확인필요 → 거래일·금액이 있으면 보관중
     var st = D.orig.st;
     if ((st === '판독대기' || st === '확인필요') && v.date && v.amount !== '') { ch.status = '보관중'; ch.reason = ''; }
