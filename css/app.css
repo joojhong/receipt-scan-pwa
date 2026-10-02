@@ -438,3 +438,5 @@ button.banner{display:block;width:calc(100% - 40px);text-align:left;border:0;cur
 .pv-att b{color:var(--ink);font-size:15px}
 .pv-front{margin:0 20px 14px}
 .pv-att .mini{margin-top:4px}
+.at-pw{display:flex;gap:8px}
+.at-pw input{flex:1;min-width:0}
