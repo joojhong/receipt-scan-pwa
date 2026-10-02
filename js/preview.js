@@ -28,6 +28,7 @@
     '접대비': [['topic', '내용'], ['guest', '접대상대방']],
     '회의비': [['topic', '내용'], ['attendees', '회의참석자']]
   };
+  function isAtt(it) { return it.kind === '첨부'; }   // 파일 첨부로 손입력한 건(올린 PDF가 그대로 붙음)
   function missingOf(cat, it) {
     var m = [];
     if (!it.hasAmount || !(Number(it.amount) > 0)) m.push('금액');
@@ -124,19 +125,34 @@
       (noInfo ? '<div class="banner">갑지 머리글(사번·팀명·사원명 등)이 비어 있습니다. <button class="mini" id="pvMe" type="button">내 정보 채우기</button></div>' : '') +
       (P.error ? '<div class="banner warn" role="alert">' + esc(P.error) + ' <button class="mini" id="pvRetry" type="button">다시 시도</button></div>' : '');
 
+    var atts = mode === 'sheet' ? [] : items.filter(isAtt);       // 손입력 영수증의 PDF(영수증 쪽 뒤에 붙음)
+    var front = sel.category === '출장비' ? P.front : null;         // 출장비: 인트라넷에서 받은 갑지 PDF(맨 앞)
     var sheets = withSheet && !mixed ? sheetUrls(sel.category, items, info) : [];
-    var nPages = sheets.length + (mode === 'sheet' ? 0 : (P.pages ? P.pages.length : 0));
-    h = h.replace('<!--np-->', nPages ? ' · <b>' + nPages + '쪽</b>' : '');
+    var nRec = mode === 'sheet' ? 0 : (P.pages ? P.pages.length : 0);
+    var nPages = sheets.length + nRec;
+    var extra = (front ? 1 : 0) + atts.length;
+    h = h.replace('<!--np-->', nPages || extra ? ' · <b>' + (nPages ? nPages + '쪽' : '') + (extra ? (nPages ? ' + ' : '') + 'PDF ' + extra + '개' : '') + '</b>' : '');
+    var attCard = function (label, name, sub, href, del) {
+      return '<div class="pv-pl">' + label + '</div><div class="pv-att">' +
+        '<svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="#8A8D94" stroke-width="1.6" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/></svg>' +
+        '<b>' + esc(name) + '</b>' + (sub ? esc(sub) : '') + '<span>올린 PDF의 모든 쪽이 이 자리에 그대로 들어갑니다</span>' +
+        (href ? '<a class="mini" href="' + href + '" target="_blank" rel="noopener">PDF 열기</a>' : '') + (del || '') + '</div>';
+    };
+    if (sel.category === '출장비' && !P.savedPdf) {
+      h += front ? attCard('인트라넷 출장비 갑지 (맨 앞)', front.name, (front.size / 1048576).toFixed(1) + 'MB', '', '<button class="mini" id="pvFrontDel" type="button">빼기</button>')
+        : '<div class="pv-front"><label class="at-file"><input type="file" id="pvFront" accept="application/pdf,.pdf" hidden><span>+ 인트라넷 출장비 갑지 PDF 붙이기 (선택)</span></label>' +
+          '<span class="hint" style="padding:6px 0 0">인트라넷에서 받은 출장비 갑지(지출결의서)를 붙이면 영수증 앞에 합쳐서 1개의 PDF로 만듭니다.</span></div>';
+    }
     h += sheets.map(function (u, i) {
-      return '<div class="pv-pl">' + (i + 1) + ' / ' + nPages + '쪽 · 갑지</div><div class="pv-page pv-sheet"><img src="' + u + '" alt="갑지 ' + (i + 1) + '쪽"></div>';
+      return '<div class="pv-pl">갑지 ' + (i + 1) + (sheets.length > 1 ? ' / ' + sheets.length : '') + '</div><div class="pv-page pv-sheet"><img src="' + u + '" alt="갑지 ' + (i + 1) + '쪽"></div>';
     }).join('');
     if (mode === 'sheet') {
       h += '<p class="hint">갑지만 PDF로 만듭니다. 영수증 사진은 넣지 않습니다.</p>';
     } else if (!P.pages) {
       h += '<div class="empty"><b>배치를 계산하는 중…</b>' + esc(P.status || '') + '</div>';
-    } else {
+    } else if (P.pages.length) {
       h += P.pages.map(function (pg) {
-        return '<div class="pv-pl">' + (sheets.length + pg.page + 1) + ' / ' + nPages + '쪽' + (pg.scale < 0.999 ? ' · ' + Math.round(pg.scale * 100) + '%로 줄임' : '') + '</div>' +
+        return '<div class="pv-pl">영수증 ' + (pg.page + 1) + ' / ' + P.pages.length + '쪽' + (pg.scale < 0.999 ? ' · ' + Math.round(pg.scale * 100) + '%로 줄임' : '') + '</div>' +
           '<div class="pv-page">' + pg.boxes.map(function (b) {
             var st = 'left:' + (b.x / 210 * 100) + '%;top:' + (b.y / 297 * 100) + '%;width:' + (b.w / 210 * 100) + '%;height:' + (b.h / 297 * 100) + '%';
             return '<div class="pv-box" style="' + st + '" data-pv="' + esc(b.id) + '">' + (imgs[b.id] ? '<img src="' + imgs[b.id] + '" alt="">' : '') + '</div>';
@@ -144,6 +160,9 @@
       }).join('');
       h += '<p class="hint">흰 종이 = A4 한 장(여백 10mm). 영수증은 실제 크기로 놓고, 넘치는 쪽만 조금 줄입니다(85%까지).</p>';
     }
+    h += atts.map(function (it) {
+      return attCard('첨부 영수증 PDF', it.desc || 'PDF 첨부', ' · ' + won(it.amount) + '원', it.fileId ? 'https://drive.google.com/file/d/' + encodeURIComponent(it.fileId) + '/view' : '');
+    }).join('');
     h += '<div class="dt-bar"><button class="btn-alt pv-alt" id="pvBack2" type="button">고르기로</button>' +
       '<button class="cta" id="pvSave" type="button"' + (P.pages && !P.busy && !mixed && !lacks.length && navigator.onLine ? '' : ' disabled') + '>' +
         (P.busy ? esc(P.busy) : P.savedPdf ? '청구완료 처리 다시 시도' : remake ? 'PDF 바꾸고 청구완료' : 'PDF로 저장하고 청구완료') + '</button></div><div class="bx-space"></div>';
@@ -159,6 +178,15 @@
     });
     root.querySelectorAll('[data-use]').forEach(function (b) { b.onclick = function () { ctx.narrow(uses[b.dataset.use]); }; });
     root.querySelectorAll('[data-fix]').forEach(function (b) { b.onclick = function () { ctx.openDetail(b.dataset.fix); }; });
+    var fi = root.querySelector('#pvFront');
+    if (fi) fi.onchange = function () {
+      var f = fi.files && fi.files[0]; if (!f) return;
+      if (!/pdf$/i.test(f.type) && !/\.pdf$/i.test(f.name)) { ctx.toast('PDF 파일만 붙일 수 있습니다'); return; }
+      if (f.size > RSPdf.LIMIT) { ctx.toast('10MB가 넘는 파일은 붙일 수 없습니다'); return; }
+      P.front = f; redraw();
+    };
+    var fd = root.querySelector('#pvFrontDel');
+    if (fd) fd.onclick = function () { P.front = null; redraw(); };
     var me = root.querySelector('#pvMe');
     if (me) me.onclick = function () { ctx.gotoMe(); };
     var rt = root.querySelector('#pvRetry');
@@ -184,8 +212,22 @@
           all.push({ page: all.length, scale: 1, boxes: [{ id: gid, x: 0, y: 0, w: 210, h: 297, scale: 1, sheet: true }] });
         });
         if (mode !== 'sheet') p.pages.forEach(function (pg) { all.push(pg); });
-        var built = await RSPdf.build(all, byId, function (it) { return it.canvas ? Promise.resolve(it.canvas) : ctx.photoBlob(it).then(decode); },
-          function (msg) { p.busy = msg; setBusy(msg); });
+        // 첨부 PDF 받아 두기(크기만큼 사진 PDF 한도를 줄임)
+        var atts = mode === 'sheet' ? [] : p.items.filter(isAtt);
+        var attBufs = [], attSize = 0, front = null;
+        if (sel.category === '출장비' && p.front) { front = await p.front.arrayBuffer(); attSize += front.byteLength; }
+        for (var ai = 0; ai < atts.length; ai++) {
+          p.busy = '첨부 PDF 받는 중 ' + (ai + 1) + ' / ' + atts.length; setBusy(p.busy);
+          var ab = await (await ctx.photoBlob(atts[ai])).arrayBuffer();
+          attBufs.push({ it: atts[ai], buf: ab }); attSize += ab.byteLength;
+        }
+        var built = all.length ? await RSPdf.build(all, byId, function (it) { return it.canvas ? Promise.resolve(it.canvas) : ctx.photoBlob(it).then(decode); },
+          function (msg) { p.busy = msg; setBusy(msg); }, Math.max(1024 * 1024, RSPdf.LIMIT - attSize)) : { blob: null, reduced: false };
+        if (attBufs.length || front) {
+          p.busy = 'PDF 합치는 중…'; setBusy(p.busy);
+          built.blob = await mergePdf(front, built.blob, attBufs);
+          built.tooBig = built.blob.size > RSPdf.LIMIT;
+        }
         p.size = built.blob.size; p.reduced = built.reduced; p.tooBig = !!built.tooBig;
         if (p.tooBig && !confirm('PDF가 ' + (p.size / 1048576).toFixed(1) + 'MB로 인트라넷 한도(10MB)를 넘습니다. 그래도 저장할까요?')) { p.busy = ''; redraw(); return; }
         p.busy = 'Drive에 저장하는 중…'; redraw();
@@ -229,6 +271,34 @@
     return sheetPrev.urls;
   }
 
+  // PDF 합치기: [출장비 인트라넷 갑지] → 앱 갑지·영수증 쪽 → 첨부 영수증 PDF. pdf-lib(MIT)을 필요할 때만 불러옴
+  var PDFLIB_URL = 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js';
+  var PDFLIB_SRI = 'sha384-weMABwrltA6jWR8DDe9Jp5blk+tZQh7ugpCsF3JwSA53WZM9/14PjS5LAJNHNjAI';
+  function loadPdfLib() {
+    if (window.PDFLib) return Promise.resolve();
+    return new Promise(function (res, rej) {
+      var s = document.createElement('script');
+      s.src = PDFLIB_URL; s.integrity = PDFLIB_SRI; s.crossOrigin = 'anonymous';
+      s.onload = function () { res(); };
+      s.onerror = function () { s.remove(); rej(new Error('PDF 합치기 도구를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요')); };
+      document.head.appendChild(s);
+    });
+  }
+  async function mergePdf(frontBuf, appBlob, attBufs) {
+    await loadPdfLib();
+    var L = window.PDFLib, out = await L.PDFDocument.create();
+    var add = async function (buf, label) {
+      var doc;
+      try { doc = await L.PDFDocument.load(buf); }
+      catch (e) { throw new Error('"' + label + '" PDF를 열 수 없습니다(암호가 걸렸거나 손상된 파일). 다른 PDF로 바꿔 주세요'); }
+      (await out.copyPages(doc, doc.getPageIndices())).forEach(function (pg) { out.addPage(pg); });
+    };
+    if (frontBuf) await add(frontBuf, '출장비 갑지');
+    if (appBlob) await add(await appBlob.arrayBuffer(), '영수증');
+    for (var i = 0; i < attBufs.length; i++) await add(attBufs[i].buf, attBufs[i].it.desc || '첨부');
+    return new Blob([await out.save()], { type: 'application/pdf' });
+  }
+
   function setBusy(msg) { var b = document.getElementById('pvSave'); if (b) b.textContent = msg; }
 
   // 청구본 폴더의 달: 파일명 앞 날짜의 달(출장비는 출장일, 그 외는 청구월)
@@ -259,7 +329,7 @@
 
   // 사진 크기를 알아낸 뒤 배치 → 사진 불러오기
   async function prepare(p) {
-    var items = p.items, done = 0;
+    var items = p.items.filter(function (it) { return !isAtt(it); }), done = 0;
     for (var i = 0; i < items.length; i++) {
       var it = items[i];
       p.dims[it.id] = await dimsOf(it);

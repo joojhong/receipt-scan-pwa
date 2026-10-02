@@ -284,6 +284,44 @@
     return d.id;
   }
 
+  // ── 파일 첨부(PDF 한 건을 영수증처럼 1건으로 등록) ──
+  async function uploadPdfFile(parentId, id, blob, name) {
+    var meta = { name: name || (id + '.pdf'), mimeType: 'application/pdf', parents: [parentId], appProperties: { rsReceiptId: id, rsRole: 'attach' } };
+    var b = 'rs' + Math.random().toString(36).slice(2);
+    var body = new Blob([
+      '--' + b + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + JSON.stringify(meta) + '\r\n',
+      '--' + b + '\r\nContent-Type: application/pdf\r\n\r\n', blob, '\r\n--' + b + '--'
+    ]);
+    var d = await api(UPLOAD + '?uploadType=multipart&fields=id', { method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + b }, body: body });
+    return d.id;
+  }
+  // a = {id, category, txDate, amount, cardType, corpCard, desc, memo, fileId, capturedAt, updatedAt}
+  async function appendAttachment(ws, a) {
+    var row = new Array(RECEIPT_HEADERS.length).fill('');
+    row[COL.id] = a.id;
+    row[COL.kind] = '첨부';
+    row[COL.capturedAt] = a.capturedAt;
+    row[COL.category] = a.category;
+    row[COL.status] = '보관중';
+    row[COL.cardType] = a.cardType || '';
+    row[COL.txAt] = a.txDate;
+    row[COL.month] = a.txDate.slice(0, 7);
+    row[COL.amount] = a.amount === '' || a.amount == null ? '' : Number(a.amount);
+    row[12] = a.desc || '';          // 내역
+    row[13] = a.memo || '';
+    row[17] = 0;
+    row[18] = a.fileId;
+    row[21] = a.updatedAt;
+    row[F.rot] = 0;
+    row[F.tripDate] = a.category === '출장비' ? a.txDate : '';
+    row[F.corpCard] = a.cardType === '법인카드' ? (a.corpCard || '') : '';
+    // 줄을 붙인 뒤 날짜 칸만 다시 써서 시트가 날짜로 알아보게 함(USER_ENTERED)
+    await api(SHEETS + '/' + ws.sheetId + '/values/' + encodeURIComponent('영수증!A1') + ':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS', {
+      method: 'POST', json: { values: [row] } });
+    var found = await findRow(ws, a.id);
+    if (found) await writeCells(ws, found.row, a.category === '출장비' ? { txAt: a.txDate, tripDate: a.txDate } : { txAt: a.txDate });
+  }
+
   async function hasReceiptRow(ws, receiptId) {
     var d = await api(SHEETS + '/' + ws.sheetId + '/values/' + encodeURIComponent('영수증!A2:A'));
     return (d.values || []).some(function (r) { return r[0] === receiptId; });
@@ -485,6 +523,8 @@
     imageSize: imageSize,
     findRow: findRow,
     readSettings: readSettings,
+    uploadPdfFile: uploadPdfFile,
+    appendAttachment: appendAttachment,
     deleteReceipts: deleteReceipts,
     writeSettings: writeSettings,
     SETTING_KEYS: SETTING_KEYS,

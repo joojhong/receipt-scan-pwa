@@ -11,7 +11,8 @@
   function enc(s) { return new TextEncoder().encode(s); }
 
   // pages: RSLayout 결과, items: id→영수증, getImage(it) → Promise<HTMLImageElement>
-  async function build(pages, byId, getImage, onStep) {
+  async function build(pages, byId, getImage, onStep, limit) {
+    var max = limit || LIMIT;
     var tries = [{ dpi: 200, q: 0.85 }, { dpi: 170, q: 0.75 }, { dpi: 150, q: 0.65 }];
     var decoded = {}, last = null;
     for (var t = 0; t < tries.length; t++) {
@@ -26,7 +27,7 @@
         }
       }
       last = write(pages, imgs);
-      if (last.size <= LIMIT) return { blob: last, dpi: opt.dpi, reduced: t > 0 };
+      if (last.size <= max) return { blob: last, dpi: opt.dpi, reduced: t > 0 };
     }
     return { blob: last, dpi: tries[tries.length - 1].dpi, reduced: true, tooBig: true };
   }

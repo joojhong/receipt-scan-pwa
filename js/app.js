@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '0.15.0';
+  var APP_VERSION = '0.16.0';
   var CATEGORIES = ['경비', '접대비', '회의비', '출장비'];
   var CACHE_KEY = 'rs.cache.receipts';
   var SET_KEY = 'rs.cache.settings';
@@ -186,6 +186,7 @@
     RSBox.reset();
     RSDetail.reset();
     RSPreview.reset();
+    RSAttach.reset();
     state.selection = null;
     state.user = null; state.ws = null; state.receipts = []; state.error = ''; state.pending = null;
     state.admin = { list: null, loading: false, error: '', waiting: 0 };
@@ -730,7 +731,33 @@
     };
   }
 
+  // ── 화면: 파일 첨부 ──
+  function renderAttach(root) {
+    if (!state.user || state.pending) return renderHome(root);
+    RSAttach.render(root, {
+      category: query().cat || '',
+      toast: toast,
+      rerender: render,
+      back: function () { location.hash = '#/box'; },
+      saveAttachment: async function (a, step) {
+        if (!navigator.onLine) throw new Error('오프라인입니다');
+        if (!state.ws) throw new Error('아직 시트를 불러오지 못했습니다');
+        var id = (crypto.randomUUID ? crypto.randomUUID() : 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2));
+        var folder = await RSStore.monthFolder(state.ws, a.txDate.slice(0, 7), state.user.email);
+        var fileId = await RSStore.uploadPdfFile(folder, id, a.file, id + '.pdf');
+        step('시트에 기록하는 중…');
+        var now = localIsoNow();
+        await RSStore.appendAttachment(state.ws, Object.assign({ id: id, fileId: fileId, capturedAt: now, updatedAt: now }, a));
+        step('불러오는 중…');
+        await refresh();
+        return id;
+      },
+      done: function (id) { toast('첨부했습니다 · 인트라넷 칸을 채워 주세요'); location.hash = '#/detail?id=' + encodeURIComponent(id); }
+    });
+  }
+
   var ROUTES = {
+    attach: renderAttach,
     me: renderMe,
     preview: renderPreview,
     detail: renderDetail,
@@ -752,7 +779,7 @@
     root.innerHTML = '';
     ROUTES[tab](root);
     var nav = document.querySelector('.tabbar');
-    nav.hidden = !state.user || !!state.pending || tab === 'admin' || tab === 'capture' || tab === 'detail' || tab === 'preview' || tab === 'me';
+    nav.hidden = !state.user || !!state.pending || tab === 'admin' || tab === 'capture' || tab === 'detail' || tab === 'preview' || tab === 'me' || tab === 'attach';
     document.querySelectorAll('.tabbar a').forEach(function (a) {
       if (a.dataset.tab === tab) a.setAttribute('aria-current', 'page');
       else a.removeAttribute('aria-current');

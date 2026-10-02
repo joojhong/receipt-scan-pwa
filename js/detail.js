@@ -41,6 +41,8 @@
     back: '<svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>',
     rotate: '<svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 11-2.3-5.6"/><path d="M20 4v5h-5"/></svg>',
     close: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>'
+  ,
+    doc: '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#5E626A" stroke-width="1.8" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/></svg>'
   };
 
   // 시트 값 → 편집값
@@ -82,7 +84,9 @@
     var h = '<header class="dt-top"><button class="icon-btn" id="dtBack" aria-label="뒤로">' + ICON.back + '</button><h1>영수증 상세</h1>' +
       '<span class="dt-st st-' + esc(st) + '">' + esc(badge) + '</span></header>';
 
-    h += '<div class="dt-photo" id="dtPhoto">' + (D.photo ? '<img src="' + D.photo + '" alt="영수증 사진">' : '<div class="dt-ph">' + (D.photoErr ? '사진을 불러오지 못했습니다 <button class="mini" id="dtPhotoRetry" type="button">다시 시도</button>' : '사진을 불러오는 중…') + '</div>') +
+    if (r.kind === '첨부') h += '<div class="dt-file">' + ICON.doc + '<b>' + esc(v.desc || 'PDF 첨부') + '</b>' +
+      (r.fileId ? '<a class="mini" href="https://drive.google.com/file/d/' + encodeURIComponent(r.fileId) + '/view" target="_blank" rel="noopener">PDF 열기</a>' : '') + '</div>';
+    else h += '<div class="dt-photo" id="dtPhoto">' + (D.photo ? '<img src="' + D.photo + '" alt="영수증 사진">' : '<div class="dt-ph">' + (D.photoErr ? '사진을 불러오지 못했습니다 <button class="mini" id="dtPhotoRetry" type="button">다시 시도</button>' : '사진을 불러오는 중…') + '</div>') +
       (!ro && D.photo ? '<button class="dt-rot" id="dtRot" type="button">' + ICON.rotate + '회전</button>' : '') + '</div>';
 
     if (st === 'upload') h += '<div class="banner">아직 Drive에 올라가지 않았습니다. 올라간 뒤 값을 고칠 수 있습니다. <button class="mini" id="dtRetry" type="button">지금 다시 시도</button></div>';
@@ -116,12 +120,12 @@
         D.monthFollows ? '거래일(카드 사용일) 기준으로 자동으로 정해집니다. 바꾸면 그 달 청구로 옮겨집니다' : '직접 바꾼 값입니다. 거래일을 바꿔도 따라 바뀌지 않습니다') +
       (r.kind === '첨부' ? field('내역', '<input type="text" data-k="desc" maxlength="100" value="' + esc(v.desc) + '"' + dis + '>') : '') +
       field('메모', '<input type="text" data-k="memo" maxlength="100" value="' + esc(v.memo) + '"' + dis + '>') +
-      field('영수증 폭', '<div class="dt-seg">' +
+      (r.kind === '첨부' ? '' : field('영수증 폭', '<div class="dt-seg">' +
         '<button type="button" data-k="widthMm" data-v="80"' + (Number(v.widthMm) === 80 ? ' class="on"' : '') + dis + '>보통 80mm</button>' +
         '<button type="button" data-k="widthMm" data-v="58"' + (Number(v.widthMm) === 58 ? ' class="on"' : '') + dis + '>좁은 것 58mm</button>' +
         '<button type="button" data-k="widthMm" data-v="other"' + (other ? ' class="on"' : '') + dis + '>기타</button></div>' +
-        (other ? '<div class="dt-won dt-mm"><input type="number" inputmode="numeric" data-k="widthNum" min="20" max="300" value="' + esc(v.widthMm) + '"' + dis + '><span>mm</span></div>' : ''), errs.widthMm) +
-      '<div class="dt-meta">촬영: ' + esc(fmtDT(r.capturedAt)) + '</div>');
+        (other ? '<div class="dt-won dt-mm"><input type="number" inputmode="numeric" data-k="widthNum" min="20" max="300" value="' + esc(v.widthMm) + '"' + dis + '><span>mm</span></div>' : ''), errs.widthMm)) +
+      '<div class="dt-meta">' + (r.kind === '첨부' ? '첨부' : '촬영') + ': ' + esc(fmtDT(r.capturedAt)) + '</div>');
 
     // 아래 버튼
     var dirty = changedKeys().length > 0;
@@ -136,7 +140,7 @@
 
     root.appendChild(el(h));
     bind(root);
-    if (!D.photo && !D.photoErr && !D.photoLoading) loadPhoto(r);
+    if (r.kind !== '첨부' && !D.photo && !D.photoErr && !D.photoLoading) loadPhoto(r);
   }
 
   // 가맹점명 · 주소(시·군 + 구·읍·면까지만). 인트라넷 청구 내역을 적을 때 참고용

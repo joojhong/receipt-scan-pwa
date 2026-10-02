@@ -226,6 +226,7 @@
     var tp = parts(it.txAt);
     if (tp && it.month && it.month !== tp.y + '-' + String(tp.mo).padStart(2, '0')) badges.push('<span class="bdg b-month">귀속 ' + Number(it.month.slice(5, 7)) + '월</span>');
     if (B.all && it.month) badges.push('<span class="bdg b-mon">' + Number(it.month.slice(5, 7)) + '월</span>');
+    if (isFile) badges.unshift('<span class="bdg b-file">첨부 PDF</span>');
     var th = thumbs[it.id];
     var img = isFile ? '<span class="bx-th file">' + ICON.doc + '</span>' :
       '<span class="bx-th" data-th="' + esc(it.id) + '">' + (th && th !== 'fail' ? '<img src="' + th + '" alt=""' + (it.rot ? ' class="r' + it.rot + '"' : '') + '>' : '') + '</span>';
@@ -347,7 +348,7 @@
     });
     root.querySelector('#bxReload').onclick = function () { ctx.refresh(); };
     var cap = function () { ctx.go('#/capture?cat=' + encodeURIComponent(B.cat) + '&from=box'); };
-    var att = function () { ctx.toast('파일 첨부는 4단계 5번 작업에서 만듭니다'); };
+    var att = function () { ctx.go('#/attach?cat=' + encodeURIComponent(B.cat)); };
     root.querySelector('#bxCap').onclick = cap;
     root.querySelector('#bxAttach').onclick = att;
     var c2 = root.querySelector('#bxCap2'); if (c2) c2.onclick = cap;
