@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '0.13.0';
+  var APP_VERSION = '0.14.0';
   var CATEGORIES = ['경비', '접대비', '회의비', '출장비'];
   var CACHE_KEY = 'rs.cache.receipts';
   var SET_KEY = 'rs.cache.settings';
@@ -518,7 +518,7 @@
   // 영수증 값 고치기: 바뀐 칸만 씀. orig = 화면을 열 때의 값. 그사이 PC에서 같은 칸이 바뀌었으면 PC 값을 남김
   var FIELD_LABEL = { category: '구분', txAt: '거래일시', amount: '금액', merchant: '가맹점명', address: '가맹점 주소', desc: '내역', memo: '메모',
     month: '귀속 월', widthMm: '영수증 폭', rot: '회전', guest: '접대상대방', topic: '내용', transport: '교통수단', driveTime: '운행시간', account: '계정', fuel: '주유량', work: '업무내용',
-    car: '업무용 차량', from: '출발지', to: '도착지', km: '운행거리', tripDate: '출장일', attendees: '참석자', card: '카드사', cardType: '카드 구분', status: '상태', reason: '확인 사유', pdfId: '청구 PDF', claimedAt: '청구일시' };
+    car: '업무용 차량', from: '출발지', to: '도착지', km: '운행거리', tripDate: '출장일', attendees: '참석자', card: '카드사', cardType: '카드 구분', corpCard: '법인카드', status: '상태', reason: '확인 사유', pdfId: '청구 PDF', claimedAt: '청구일시' };
   function cmpVal(r, k) {
     if (k === 'amount') return r.hasAmount ? String(r.amount) : '';
     if (k === 'rot') return String((r.rot || 0) * 90);
@@ -675,13 +675,15 @@
           }).join('') + '</div>' +
           '<span class="dt-hint">회사 차량이면 주유비·차량유지관리비·주차/통행료 영수증의 업무용승용차 칸에 "차량번호(사원명)"이 자동으로 들어갑니다.</span></div>' +
       '</div></section>' +
+      (RSAuth.isAdmin() ? cardAdmin() : '') +
       '<div class="dt-bar"><button class="cta" id="meSave" type="button"' + (state.meSaving ? ' disabled' : '') + '>' + (state.meSaving ? '저장 중…' : '저장') + '</button></div><div class="bx-space"></div>'
     ));
     root.querySelectorAll('[data-me]').forEach(function (i) { i.oninput = function () { d[i.dataset.me] = i.value.trim(); }; });
     root.querySelectorAll('[data-car]').forEach(function (b) {
       b.onclick = function () { d['회사 차량'] = d['회사 차량'] === b.dataset.car ? '' : b.dataset.car; render(); };
     });
-    var leave = function () { state.meDraft = null; var b = state.meBack || '#/home'; state.meBack = ''; location.hash = b; };
+    bindCardAdmin(root);
+    var leave = function () { state.meDraft = null; state.cardDraft = null; var b = state.meBack || '#/home'; state.meBack = ''; location.hash = b; };
     root.querySelector('#meBack').onclick = leave;
     root.querySelector('#meSave').onclick = function () {
       if (d['차량번호'] && !d['회사 차량']) { toast('회사 차량인지 개인 차량인지 골라 주세요'); return; }
@@ -693,6 +695,38 @@
         if (nm && nm !== state.user.name) return RSAuth.setName(nm).then(function (v) { state.user.name = v || nm; }).catch(function () { toast('관리자 화면 이름은 바꾸지 못했습니다'); });
       }).then(function () { state.meSaving = false; toast('내 정보를 저장했습니다'); leave(); })
         .catch(function (e) { state.meSaving = false; toast(e.message || '저장하지 못했습니다'); render(); });
+    };
+  }
+
+  // ── 관리자: 회사 법인카드 목록(모든 직원의 접대비·회의비 "법인카드" 선택지) ──
+  function cardAdmin() {
+    if (!state.cardDraft) state.cardDraft = RSAuth.corpCards().slice();
+    var list = state.cardDraft;
+    return '<section class="dt-sec"><div class="dt-sec-h">법인카드 목록 (관리자)</div><div class="dt-sec-b">' +
+      '<p class="hint" style="margin:6px 0 4px;padding:0">여기서 고친 목록이 모든 직원 앱의 접대비·회의비 "법인카드" 선택지로 나옵니다. 직원 앱에는 다음에 앱을 열 때 반영됩니다.</p>' +
+      list.map(function (c, i) {
+        return '<div class="cd-row"><input type="text" maxlength="30" data-card="' + i + '" value="' + esc(c) + '" placeholder="예: NK하나9798">' +
+          '<button type="button" class="mini" data-cdel="' + i + '" aria-label="삭제">삭제</button></div>';
+      }).join('') +
+      '<div class="cd-btns"><button type="button" class="mini" id="cdAdd">+ 카드 추가</button>' +
+      '<button type="button" class="mini ok" id="cdSave"' + (state.cardSaving ? ' disabled' : '') + '>' + (state.cardSaving ? '저장 중…' : '법인카드 목록 저장') + '</button></div>' +
+    '</div></section>';
+  }
+  function bindCardAdmin(root) {
+    if (!state.cardDraft) return;
+    var list = state.cardDraft;
+    root.querySelectorAll('[data-card]').forEach(function (i) { i.oninput = function () { list[+i.dataset.card] = i.value; }; });
+    root.querySelectorAll('[data-cdel]').forEach(function (b) { b.onclick = function () { list.splice(+b.dataset.cdel, 1); render(); }; });
+    var add = root.querySelector('#cdAdd');
+    if (add) add.onclick = function () { list.push(''); render(); var ins = document.querySelectorAll('[data-card]'); if (ins.length) ins[ins.length - 1].focus(); };
+    var sv = root.querySelector('#cdSave');
+    if (sv) sv.onclick = function () {
+      var clean = list.map(function (c) { return String(c || '').trim(); }).filter(Boolean);
+      if (!confirm('법인카드 목록을 저장할까요?\n\n' + (clean.join('\n') || '(없음)'))) return;
+      state.cardSaving = true; render();
+      RSAuth.saveCards(clean).then(function (cards) { state.cardDraft = cards.slice(); toast('법인카드 목록을 저장했습니다 (' + cards.length + '장)'); })
+        .catch(function (e) { toast(e.message || '저장하지 못했습니다'); })
+        .then(function () { state.cardSaving = false; render(); });
     };
   }
 

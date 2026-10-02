@@ -16,6 +16,7 @@
   var FUEL_ACCOUNT = '8220001-주유비(회사차량)';
   // 회사 차량일 때 업무용승용차 칸이 보이는 계정(주유비·차량유지관리비·주차/통행료)
   var TAXI_ACCOUNT = '8120003-교통비(대중교통 외)', OWN_CAR_ACCOUNT = '8120001-자차운행비(별도서류첨부)', PARKING_ACCOUNT = '8220003-주차/통행료';
+  var USE_CATS = { '접대비': 1, '회의비': 1 };   // 사용구분·법인카드를 고르는 구분
   var CAR_ACCOUNTS = ['8220001-주유비(회사차량)', '8220002-차량유지관리비(회사 차량)', '8220003-주차/통행료'];
 
   var D = null;    // { id, orig, v(편집값), monthFollows, saving, error, photo }
@@ -53,7 +54,7 @@
       guest: r.guest || '', topic: r.topic || '', account: r.account || '', fuel: r.fuel || '', work: r.work || '',
       car: r.car || '', from: r.from || '', to: r.to || '', km: r.km || '', tripDate: r.tripDate || '', attendees: r.attendees || '',
       transport: r.transport || '', driveTime: r.driveTime || '',
-      card: r.card || '', cardType: r.cardType || ''
+      card: r.card || '', cardType: r.cardType || '', corpCard: r.corpCard || ''
     };
   }
 
@@ -97,7 +98,8 @@
     h += section('결제', '',
       '<div class="dt-2">' + field('거래일', '<input type="date" data-k="date" max="' + today() + '" value="' + esc(v.date) + '"' + dis + '>', errs.date, true) +
         field('시각(선택)', '<input type="time" data-k="time" value="' + esc(v.time) + '"' + dis + '>') + '</div>' +
-      field('금액', '<div class="dt-won"><input type="text" inputmode="numeric" data-k="amount" value="' + esc(v.amount ? won(v.amount) : '') + '" placeholder="0"' + dis + '><span>원</span></div>', errs.amount, true));
+      field('금액', '<div class="dt-won"><input type="text" inputmode="numeric" data-k="amount" value="' + esc(v.amount ? won(v.amount) : '') + '" placeholder="0"' + dis + '><span>원</span></div>', errs.amount, true)
+        .replace('필수</em>', '필수</em>' + placeTag(v)));
     // ② 인트라넷 청구 내역(구분별 양식 칸)
     h += section('인트라넷 청구 내역', 'sec-intra',
       '<div class="dt-seg dt-cats">' + CATEGORIES.map(function (cn) {
@@ -108,9 +110,10 @@
     h += section('카드 판독 정보', 'sec-card',
       '<div class="dt-2">' + field('카드사', '<input type="text" data-k="card" list="dtCards" maxlength="20" placeholder="예: 신한카드, 현금" value="' + esc(v.card) + '"' + dis + '>' +
           '<datalist id="dtCards">' + CARDS.map(function (c) { return '<option value="' + c + '">'; }).join('') + '</datalist>') +
+        (USE_CATS[v.category] ? field('카드 구분', '<div class="dt-ro">' + (v.cardType === '법인카드' ? '법인' + (v.corpCard ? ' · ' + esc(v.corpCard) : '') : '개인') + ' <span class="opt">(위 사용구분에서 바꿈)</span></div>') :
         field('카드 구분', '<div class="dt-seg dt-seg2">' + ['개인카드', '법인카드'].map(function (t) {
           return '<button type="button" data-k="cardType" data-v="' + (v.cardType === t ? '' : t) + '"' + (v.cardType === t ? ' class="on"' : '') + dis + '>' + t.replace('카드', '') + '</button>';
-        }).join('') + '</div>') + '</div>' +
+        }).join('') + '</div>')) + '</div>' +
       field('가맹점명', '<input type="text" data-k="merchant" maxlength="60" value="' + esc(v.merchant) + '"' + dis + '>') +
       field('가맹점 주소', '<input type="text" data-k="address" maxlength="100" value="' + esc(v.address) + '"' + dis + '>') +
       field('귀속 월', '<input type="month" data-k="month" value="' + esc(v.month) + '"' + dis + '>', errs.month, false,
@@ -138,6 +141,26 @@
     root.appendChild(el(h));
     bind(root);
     if (!D.photo && !D.photoErr && !D.photoLoading) loadPhoto(r);
+  }
+
+  // 가맹점명 · 주소(시·군 + 구·읍·면까지만). 인트라넷 청구 내역을 적을 때 참고용
+  function shortAddr(s) {
+    var tk = String(s || '').replace(/[(),]/g, ' ').split(/\s+/).filter(Boolean), out = [];
+    for (var i = 0; i < tk.length && out.length < 2; i++) {
+      var w = tk[i];
+      if (!out.length) {
+        if (/(특별시|광역시)$/.test(w)) out.push(w.replace(/(특별시|광역시)$/, ''));
+        else if (/(시|군)$/.test(w) && !/특별자치시$/.test(w)) out.push(w);
+        else if (/^(서울|부산|대구|인천|광주|대전|울산)$/.test(w)) out.push(w);
+        else if (/특별자치시$/.test(w)) out.push(w.replace(/특별자치시$/, ''));
+      } else if (/(구|군|읍|면)$/.test(w)) out.push(w);
+      else break;
+    }
+    return out.join(' ');
+  }
+  function placeTag(v) {
+    var a = shortAddr(v.address), parts = [v.merchant, a].filter(Boolean);
+    return parts.length ? '<span class="dt-place">' + esc(parts.join(' · ')) + '</span>' : '';
   }
 
   function section(title, cls, body) {
@@ -192,6 +215,19 @@
         }
       }
     }
+    if (USE_CATS[v.category]) {
+      // 인트라넷 접대비·회의비 양식: 사용구분(개인청구·법인카드) + 법인카드면 어느 카드인지
+      var corp = v.cardType === '법인카드';
+      h += field('사용구분', '<div class="dt-seg dt-seg2">' +
+        '<button type="button" data-k="cardType" data-v="개인카드"' + (!corp ? ' class="on"' : '') + dis + '>개인청구</button>' +
+        '<button type="button" data-k="cardType" data-v="법인카드"' + (corp ? ' class="on"' : '') + dis + '>법인카드</button></div>');
+      if (corp) {
+        var cards = RSAuth.corpCards();
+        h += field('법인카드', '<select data-k="corpCard"' + dis + '><option value="">선택</option>' + cards.map(function (c) {
+          return '<option' + (v.corpCard === c ? ' selected' : '') + '>' + esc(c) + '</option>';
+        }).join('') + (v.corpCard && cards.indexOf(v.corpCard) < 0 ? '<option selected>' + esc(v.corpCard) + '</option>' : '') + '</select>', '', true);
+      }
+    }
     if (v.category === '접대비') {
       h += field('내용', txt('topic', 100, '예: 영진종합상사 대표 미팅'), '', true);
       h += field('접대상대방', txt('guest', 60, '예: 정태금'), '', true);
@@ -222,7 +258,7 @@
   }
 
   var KEYS = ['category', 'date', 'time', 'amount', 'merchant', 'address', 'desc', 'memo', 'month', 'widthMm', 'rot',
-    'guest', 'topic', 'account', 'fuel', 'work', 'car', 'from', 'to', 'km', 'tripDate', 'attendees', 'card', 'cardType', 'transport', 'driveTime'];
+    'guest', 'topic', 'account', 'fuel', 'work', 'car', 'from', 'to', 'km', 'tripDate', 'attendees', 'card', 'cardType', 'transport', 'driveTime', 'corpCard'];
   function changedKeys() {
     return KEYS.filter(function (k) {
       if (k === 'car' && D.base.carDefault !== undefined && D.v.car === D.base.carDefault && !D.orig.car) return false; // 채워 둔 기본값만으로는 "바뀜" 아님
@@ -266,7 +302,7 @@
       };
       inp.oninput = function () { handler(); refreshBar(root); };
       // 날짜·선택 칸은 값에 따라 다른 칸(귀속 월, 주유량)이 바뀌므로 다시 그림
-      inp.onchange = function () { handler(); if (k === 'date' || k === 'account' || k === 'month' || k === 'widthNum' || k === 'tripDate') redraw(); else refreshBar(root); };
+      inp.onchange = function () { handler(); if (k === 'date' || k === 'account' || k === 'month' || k === 'widthNum' || k === 'tripDate' || k === 'corpCard') redraw(); else refreshBar(root); };
     });
     var rot = q('#dtRot');
     if (rot) rot.onclick = function (e) { e.stopPropagation(); D.v.rot = (Number(D.v.rot) + 1) % 4; drawPhoto(); };
@@ -360,6 +396,8 @@
     });
     // 기본값으로 채워 둔 차량을 저장할 때 함께 기록
     if (v.category === '경비' && CAR_ACCOUNTS.indexOf(v.account) >= 0 && v.account !== PARKING_ACCOUNT && v.car && !D.orig.car && ch.car === undefined && keys.length) ch.car = v.car;
+    // 개인으로 바꾸면 고른 법인카드는 지움
+    if (v.cardType !== '법인카드' && D.base.corpCard && ch.cardType !== undefined) ch.corpCard = '';
     // 판독대기·확인필요 → 거래일·금액이 있으면 보관중
     var st = D.orig.st;
     if ((st === '판독대기' || st === '확인필요') && v.date && v.amount !== '') { ch.status = '보관중'; ch.reason = ''; }

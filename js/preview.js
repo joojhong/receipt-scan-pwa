@@ -32,6 +32,7 @@
     var m = [];
     if (!it.hasAmount || !(Number(it.amount) > 0)) m.push('금액');
     (REQUIRED[cat] || []).forEach(function (f) { if (!String(it[f[0]] || '').trim()) m.push(f[1]); });
+    if ((cat === '접대비' || cat === '회의비') && it.cardType === '법인카드' && !it.corpCard) m.push('법인카드');
     return m;
   }
   function claimMonth(items) { return mostCommon(items.map(function (it) { return it.month; })) || ''; }

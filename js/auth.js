@@ -54,6 +54,20 @@
   function setAccess(d) {
     access = { token: d.accessToken, exp: Date.now() + (Number(d.expiresIn || 3600) - 60) * 1000 };
     info = { idToken: d.idToken || null, isAdmin: !!d.isAdmin };
+    if (Array.isArray(d.corpCards)) { try { localStorage.setItem(CARDS_KEY, JSON.stringify(d.corpCards)); } catch (e) { /* 무시 */ } }
+  }
+
+  // 회사 법인카드 목록(관리자가 바꿈). 서버에서 받기 전에는 처음 받은 5장
+  var CARDS_KEY = 'rs.corpCards';
+  var DEFAULT_CARDS = ['NK하나9798', 'NK하나6781', 'NK하나0846', 'NK하나0047', 'NK하나5285'];
+  function corpCards() {
+    try { var v = JSON.parse(localStorage.getItem(CARDS_KEY) || 'null'); if (Array.isArray(v)) return v; } catch (e) { /* 무시 */ }
+    return DEFAULT_CARDS.slice();
+  }
+  async function saveCards(list) {
+    var d = await admin('/v1/admin/cards', { cards: list });
+    try { localStorage.setItem(CARDS_KEY, JSON.stringify(d.cards)); } catch (e) { /* 무시 */ }
+    return d.cards;
   }
 
   function waitForGis() {
@@ -164,6 +178,8 @@
     getToken: getToken,
     admin: admin,
     setName: setName,
+    corpCards: corpCards,
+    saveCards: saveCards,
     isAdmin: function () { return info.isAdmin; },
     user: function () { var s = load(); return s ? { email: s.email, approved: s.approved !== false, name: s.name || '' } : null; },
     invalidate: function () { access = null; }
