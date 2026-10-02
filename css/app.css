@@ -440,3 +440,9 @@ button.banner{display:block;width:calc(100% - 40px);text-align:left;border:0;cur
 .pv-att .mini{margin-top:4px}
 .at-pw{display:flex;gap:8px}
 .at-pw input{flex:1;min-width:0}
+.at-row{display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px dashed var(--line)}
+.at-no{width:22px;height:22px;border-radius:11px;background:#EEF1FC;color:#22379C;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}
+.at-name{flex:1;min-width:0;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.at-name small{display:block;font-size:11px;color:var(--sub)}
+.at-row + .at-file,.at-pw + .dt-hint + .at-file,.dt-hint + .at-file{margin-top:8px}
+.at-pw{margin-top:6px}
