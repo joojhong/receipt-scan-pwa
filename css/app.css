@@ -423,3 +423,8 @@ button.banner{display:block;width:calc(100% - 40px);text-align:left;border:0;cur
 .bx-excl{height:42px;padding:0 14px;border:1px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);font-size:14px;font-weight:600;cursor:pointer}
 .bx-excl:disabled{color:#C9CCD6}
 .bx-del{background:#C62828}
+.dt-ro{font-size:15px;color:var(--ink);padding:6px 0}
+.cd-row{display:flex;gap:8px;align-items:center;padding:6px 0}
+.cd-row input{flex:1;min-width:0;height:42px;border:1px solid var(--line);border-radius:10px;padding:0 12px;font-size:15px}
+.cd-btns{display:flex;gap:8px;justify-content:space-between;padding:8px 0 4px}
+.dt-place{margin-left:8px;font-size:12px;font-weight:400;color:var(--sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:68%;display:inline-block;vertical-align:bottom}
