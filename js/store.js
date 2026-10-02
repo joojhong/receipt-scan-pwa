@@ -376,6 +376,34 @@
     return { skipped: skipped };
   }
 
+  // 영구 삭제: 제외 상태인 영수증만. 시트 줄을 지우고 원본 사진은 Drive 휴지통으로(30일 안에 Drive에서 되살릴 수 있음)
+  async function deleteReceipts(ws, ids) {
+    var info = await api(SHEETS + '/' + ws.sheetId + '?fields=sheets.properties');
+    var tab = info.sheets.find(function (s) { return s.properties.title === '영수증'; });
+    if (!tab) throw new Error('시트에 영수증 탭이 없습니다');
+    var d = await api(SHEETS + '/' + ws.sheetId + '/values:batchGet?ranges=' + encodeURIComponent('영수증!A2:A') + '&ranges=' + encodeURIComponent('영수증!E2:E') + '&ranges=' + encodeURIComponent('영수증!S2:S'));
+    var idv = d.valueRanges[0].values || [], stv = d.valueRanges[1].values || [], fv = d.valueRanges[2].values || [];
+    var want = {}; ids.forEach(function (id) { want[id] = 1; });
+    var rows = [], files = [], skipped = [], found = {};
+    idv.forEach(function (r, i) {
+      var id = r[0]; if (!id || !want[id]) return;
+      found[id] = 1;
+      if (((stv[i] && stv[i][0]) || '') !== '제외') { skipped.push(id); return; }  // PC에서 상태가 바뀌었으면 지우지 않음
+      rows.push(i + 2);
+      if (fv[i] && fv[i][0]) files.push(String(fv[i][0]));
+    });
+    ids.forEach(function (id) { if (!found[id]) skipped.push(id); });
+    rows.sort(function (a, b) { return b - a; });                                   // 아래 줄부터 지워야 줄 번호가 안 밀림
+    if (rows.length) await api(SHEETS + '/' + ws.sheetId + ':batchUpdate', { method: 'POST', json: { requests: rows.map(function (n) {
+      return { deleteDimension: { range: { sheetId: tab.properties.sheetId, dimension: 'ROWS', startIndex: n - 1, endIndex: n } } };
+    }) } });
+    var trashFailed = 0;
+    for (var i = 0; i < files.length; i++) {
+      try { await api(DRIVE + '/' + files[i] + '?fields=id', { method: 'PATCH', json: { trashed: true } }); } catch (e) { trashFailed++; }
+    }
+    return { deleted: rows.length, skipped: skipped, trashFailed: trashFailed };
+  }
+
   // ── 상세 화면 저장 ──
   function colName(i) { var s = ''; i++; while (i > 0) { var m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; }
 
@@ -456,6 +484,7 @@
     imageSize: imageSize,
     findRow: findRow,
     readSettings: readSettings,
+    deleteReceipts: deleteReceipts,
     writeSettings: writeSettings,
     SETTING_KEYS: SETTING_KEYS,
     writeCells: writeCells,

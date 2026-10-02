@@ -119,9 +119,10 @@
     // 보이지 않거나 체크할 수 없게 된 항목은 선택에서 뺌
     var checkable = {};
     if (B.tab === 'keep') list.forEach(function (it) { if (it.st === '보관중' || inRemake(it)) checkable[it.id] = it; });
+    if (B.tab === 'excl') list.forEach(function (it) { checkable[it.id] = it; });
     Object.keys(B.sel).forEach(function (id) { if (!checkable[id]) delete B.sel[id]; });
     var selIds = Object.keys(B.sel), selSum = 0;
-    selIds.forEach(function (id) { selSum += checkable[id].amount; });
+    selIds.forEach(function (id) { selSum += checkable[id].amount || 0; });
     var nCheckable = Object.keys(checkable).length;
 
     var catChips = CATEGORIES.map(function (cn) {
@@ -148,9 +149,20 @@
       bar = '<div class="bx-bar">' +
         '<button type="button" class="bx-all' + (allOn ? ' on' : '') + '" id="bxAll"' + (nCheckable ? '' : ' disabled') + '><span class="bx-ck">' + ICON.check + '</span>전체</button>' +
         '<div class="bx-selsum"><b>' + selIds.length + '건</b> · ' + won(selSum) + '원</div>' +
+        (B.remake ? '' : '<button type="button" class="bx-excl" id="bxExcl"' + (selIds.length && navigator.onLine ? '' : ' disabled') + '>제외</button>') +
         '<button type="button" class="bx-pdf" id="bxPdf"' + (canPdf ? '' : ' disabled') + '>A4 미리보기·PDF</button>' +
       '</div>' +
       (selIds.length && !navigator.onLine ? '<p class="hint">온라인에서만 PDF를 만들 수 있습니다.</p>' : '');
+    }
+
+    if (B.tab === 'excl' && list.length) {
+      var allOn2 = nCheckable > 0 && selIds.length === nCheckable, can = selIds.length > 0 && navigator.onLine;
+      bar = '<div class="bx-bar">' +
+        '<button type="button" class="bx-all' + (allOn2 ? ' on' : '') + '" id="bxAll"><span class="bx-ck">' + ICON.check + '</span>전체</button>' +
+        '<div class="bx-selsum"><b>' + selIds.length + '건</b> · ' + won(selSum) + '원</div>' +
+        '<button type="button" class="bx-excl" id="bxRestore"' + (can ? '' : ' disabled') + '>복원</button>' +
+        '<button type="button" class="bx-pdf bx-del" id="bxDel"' + (can ? '' : ' disabled') + '>영구 삭제</button>' +
+      '</div>';
     }
 
     root.appendChild(el(
@@ -201,7 +213,7 @@
   };
 
   function row(it) {
-    var canCheck = B.tab === 'keep' && (it.st === '보관중' || inRemake(it));
+    var canCheck = (B.tab === 'keep' && (it.st === '보관중' || inRemake(it))) || B.tab === 'excl';
     var on = !!B.sel[it.id];
     var isFile = it.kind === '첨부';
     var title = isFile ? (it.desc || '파일 첨부') :
@@ -218,7 +230,7 @@
     var img = isFile ? '<span class="bx-th file">' + ICON.doc + '</span>' :
       '<span class="bx-th" data-th="' + esc(it.id) + '">' + (th && th !== 'fail' ? '<img src="' + th + '" alt=""' + (it.rot ? ' class="r' + it.rot + '"' : '') + '>' : '') + '</span>';
     return '<div class="bx-row' + (on ? ' sel' : '') + '" data-id="' + esc(it.id) + '">' +
-      (B.tab === 'keep' ? '<button type="button" class="bx-ck' + (on ? ' on' : '') + (canCheck ? '' : ' off') + '" data-ck="' + esc(it.id) + '"' +
+      (B.tab === 'keep' || B.tab === 'excl' ? '<button type="button" class="bx-ck' + (on ? ' on' : '') + (canCheck ? '' : ' off') + '" data-ck="' + esc(it.id) + '"' +
         (canCheck ? ' aria-label="선택"' : ' aria-label="아직 선택할 수 없음" aria-disabled="true"') + '>' + ICON.check + '</button>' : '') +
       img +
       '<div class="bx-main"><div class="bx-t">' + esc(title) + '</div>' +
@@ -371,6 +383,23 @@
       if (ids.length && Object.keys(B.sel).length === ids.length) B.sel = {};
       else { B.sel = {}; ids.forEach(function (id) { B.sel[id] = 1; }); }
       ctx.rerender();
+    };
+    var selected = function () { return list.filter(function (it) { return B.sel[it.id]; }); };
+    var xb = root.querySelector('#bxExcl');
+    if (xb) xb.onclick = function () {
+      var s = selected(); if (!s.length) return;
+      B.sel = {}; ctx.bulkStatus('exclude', s);
+    };
+    var rb = root.querySelector('#bxRestore');
+    if (rb) rb.onclick = function () {
+      var s = selected(); if (!s.length) return;
+      B.sel = {}; ctx.bulkStatus('restore', s);
+    };
+    var db = root.querySelector('#bxDel');
+    if (db) db.onclick = function () {
+      var s = selected(); if (!s.length) return;
+      if (!confirm(s.length + '건을 영구 삭제합니다.\n\n· 구글 시트에서 줄이 지워집니다(되돌릴 수 없음)\n· 원본 사진은 Drive 휴지통으로 갑니다(30일 안에 Drive에서 되살릴 수 있음)\n\n계속할까요?')) return;
+      B.sel = {}; ctx.deleteForever(s.map(function (it) { return it.id; }));
     };
     var pb = root.querySelector('#bxPdf');
     if (pb) pb.onclick = function () {

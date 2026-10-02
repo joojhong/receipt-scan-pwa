@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '0.12.4';
+  var APP_VERSION = '0.13.0';
   var CATEGORIES = ['경비', '접대비', '회의비', '출장비'];
   var CACHE_KEY = 'rs.cache.receipts';
   var SET_KEY = 'rs.cache.settings';
@@ -463,6 +463,15 @@
       isActive: function () { return currentTab() === 'box'; },
       rerender: render,
       statusAction: statusAction,
+      bulkStatus: bulkStatus,
+      deleteForever: function (ids) {
+        if (!state.ws || !navigator.onLine) { toast('온라인에서만 삭제할 수 있습니다'); return; }
+        toast('삭제하는 중…');
+        RSStore.deleteReceipts(state.ws, ids).then(function (r) {
+          toast(r.deleted + '건을 영구 삭제했습니다' + (r.skipped.length ? ' · ' + r.skipped.length + '건은 PC에서 상태가 바뀌어 그대로 둠' : '') + (r.trashFailed ? ' · 사진 ' + r.trashFailed + '장은 휴지통으로 못 옮김' : ''));
+          refresh();
+        }).catch(function (e) { toast(e.message || '삭제하지 못했습니다'); refresh(); });
+      },
       startPreview: function (sel) { state.selection = sel; location.hash = '#/preview'; },
       setMonth: function (y, m) { view = { y: y, m: m }; render(); },
       fileInfo: function (id) { return RSStore.fileInfo(id); },
@@ -572,6 +581,23 @@
       render();
       throw e;
     }
+  }
+
+  // 여러 건 한 번에 제외·복원(보관함 선택 바)
+  function restoreStatus(it) { return it.txAt && it.hasAmount ? '보관중' : (it.reason ? '확인필요' : '판독대기'); }
+  function bulkStatus(kind, items, quiet) {
+    if (!state.ws || !navigator.onLine) { toast('온라인에서만 바꿀 수 있습니다'); return Promise.resolve(); }
+    var now = localIsoNow(), list = items.map(function (it) {
+      return kind === 'exclude' ? { id: it.id, status: '제외', pdfId: it.pdfId || '', claimedAt: it.claimedAt || '', expect: ['보관중', '판독대기', '확인필요'] }
+        : { id: it.id, status: kind === 'back' ? it.st : restoreStatus(it), pdfId: it.pdfId || '', claimedAt: it.claimedAt || '', expect: ['제외'] };
+    });
+    return RSStore.setClaimStatus(state.ws, list, now).then(function (r) {
+      var n = items.length - r.skipped.length, skip = r.skipped.length ? ' · ' + r.skipped.length + '건은 PC에서 상태가 바뀌어 그대로 둠' : '';
+      if (kind === 'exclude' && n) undoToast(n + '건을 제외했습니다' + skip, function () { bulkStatus('back', items.filter(function (it) { return r.skipped.indexOf(it.id) < 0; }), true); });
+      else if (!quiet) toast(n + '건을 ' + (kind === 'exclude' ? '제외' : '복원') + '했습니다' + skip);
+      else toast('되돌렸습니다');
+      return refresh();
+    }).catch(function (e) { toast(e.message || '바꾸지 못했습니다'); });
   }
 
   var undoTimer;
