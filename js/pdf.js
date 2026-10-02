@@ -35,7 +35,7 @@
   async function jpegFor(img, rot, box, opt) {
     var odd = rot % 2 === 1;
     var needW = Math.round(box.w / 25.4 * opt.dpi), needH = Math.round(box.h / 25.4 * opt.dpi);
-    var srcW = img.naturalWidth, srcH = img.naturalHeight;
+    var srcW = img.naturalWidth || img.width, srcH = img.naturalHeight || img.height; // 사진(img) 또는 갑지(canvas)
     var outW = odd ? srcH : srcW, outH = odd ? srcW : srcH;          // 회전 뒤 크기
     var s = Math.min(1, needW / outW, needH / outH);
     var cw = Math.max(1, Math.round(outW * s)), ch = Math.max(1, Math.round(outH * s));
@@ -48,7 +48,7 @@
     g.rotate(rot * Math.PI / 2);
     var dw = odd ? ch : cw, dh = odd ? cw : ch;
     g.drawImage(img, -dw / 2, -dh / 2, dw, dh);
-    var blob = await new Promise(function (res) { c.toBlob(res, 'image/jpeg', opt.q); });
+    var blob = await new Promise(function (res) { c.toBlob(res, 'image/jpeg', box.sheet ? Math.max(opt.q, 0.9) : opt.q); });
     return { bytes: new Uint8Array(await blob.arrayBuffer()), w: cw, h: ch };
   }
 

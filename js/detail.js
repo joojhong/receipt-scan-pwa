@@ -14,7 +14,8 @@
     '8220002-차량유지관리비(회사 차량)', '8240000-택배비', '8140001-휴대폰(통신비)'];
   var CARDS = ['신한카드', '삼성카드', '현대카드', 'KB국민카드', '롯데카드', '하나카드', '우리카드', 'BC카드', 'NH농협카드', '현금'];
   var FUEL_ACCOUNT = '8220001-주유비(회사차량)';
-  var CAR_KEY = 'rs.detail.car';
+  // 회사 차량일 때 업무용승용차 칸이 보이는 계정(주유비·차량유지관리비·주차/통행료)
+  var CAR_ACCOUNTS = ['8220001-주유비(회사차량)', '8220002-차량유지관리비(회사 차량)', '8220003-주차/통행료'];
 
   var D = null;    // { id, orig, v(편집값), monthFollows, saving, error, photo }
   var ctx = null;
@@ -59,7 +60,6 @@
     var v = toEdit(r);
     var dm = v.date ? v.date.slice(0, 7) : '';
     D = { id: r.id, orig: r, base: toEdit(r), v: v, monthFollows: !v.month || !dm || v.month === dm, saving: false, error: '', photo: null, full: false };
-    if (r.category === '경비' && !v.car) { try { v.car = localStorage.getItem(CAR_KEY) || ''; D.base.carDefault = v.car; } catch (e) { /* 무시 */ } }
   }
 
   // ── 그리기 ──
@@ -165,7 +165,14 @@
         '<div class="dt-2">' + field('교통수단', txt('transport', 20, '예: 자가용')) + field('운행시간', txt('driveTime', 20, '예: 1시간 30분')) + '</div>' +
         field('운행거리', '<div class="dt-won"><input type="text" inputmode="decimal" data-k="km" value="' + esc(v.km) + '"' + dis + '><span>km</span></div>', errs.km) +
       '</details>';
-      h += field(opt('업무용승용차'), txt('car', 30, '예: 183허5450'), '', false, '한 번 적으면 다음 경비 영수증에도 채워 둡니다');
+      var info = ctx.settings() || {};
+      if (CAR_ACCOUNTS.indexOf(v.account) >= 0 && info['회사 차량'] !== '아니오') {
+        // 회사 차량을 등록해 두었으면 "차량번호(사원명)"을 채워 둠(저장하면 시트에도 기록)
+        var def = RSGapji.companyCar(info);
+        if (!v.car && def && !D.orig.car) { v.car = def; D.base.carDefault = def; }
+        h += field(opt('업무용승용차'), txt('car', 40, '예: 183허5450'), '', false,
+          def ? '내 정보에 등록한 회사 차량입니다' : '처음 적고 저장하면 회사 차량인지 한 번 묻고 내 정보에 등록합니다');
+      }
     }
     if (v.category === '접대비') {
       h += field(opt('내용'), txt('topic', 100, '예: 영진종합상사 대표 미팅'));
@@ -333,7 +340,7 @@
       else ch[k] = v[k];
     });
     // 기본값으로 채워 둔 차량을 저장할 때 함께 기록
-    if (v.category === '경비' && v.car && !D.orig.car && ch.car === undefined && keys.length) ch.car = v.car;
+    if (v.category === '경비' && CAR_ACCOUNTS.indexOf(v.account) >= 0 && v.car && !D.orig.car && ch.car === undefined && keys.length) ch.car = v.car;
     // 판독대기·확인필요 → 거래일·금액이 있으면 보관중
     var st = D.orig.st;
     if ((st === '판독대기' || st === '확인필요') && v.date && v.amount !== '') { ch.status = '보관중'; ch.reason = ''; }
@@ -347,7 +354,7 @@
     D.saving = true; D.error = ''; redraw();
     try {
       var res = await ctx.edit(D.id, ch, D.orig);
-      if (D.v.car) { try { localStorage.setItem(CAR_KEY, D.v.car); } catch (e) { /* 무시 */ } }
+      await registerCar();
       var msg = res.conflicts.length ? 'PC에서 수정된 값으로 바뀌었습니다: ' + res.conflicts.join(', ') : (ch.status === '보관중' ? '저장했습니다 · 이제 PDF에 넣을 수 있습니다' : '저장했습니다');
       D = null;
       ctx.toast(msg);
@@ -355,6 +362,16 @@
     } catch (e) {
       D.saving = false; D.error = e.message || '저장하지 못했습니다'; redraw();
     }
+  }
+
+  // 차량을 처음 적었으면 회사 차량인지 묻고 내 정보(시트 '설정' 탭)에 등록
+  async function registerCar() {
+    var v = D.v, info = ctx.settings() || {};
+    if (v.category !== '경비' || CAR_ACCOUNTS.indexOf(v.account) < 0 || !v.car || info['차량번호']) return;
+    var plate = v.car.replace(/\s*\(.*\)\s*$/, '').trim();
+    var company = confirm('"' + plate + '" 차량을 등록합니다.\n회사 차량인가요?\n\n[확인] 회사 차량  ·  [취소] 개인 차량\n(내 정보에서 언제든 바꿀 수 있습니다)');
+    try { await ctx.saveSettings({ '차량번호': plate, '회사 차량': company ? '예' : '아니오' }); }
+    catch (e) { ctx.toast('차량을 내 정보에 등록하지 못했습니다'); }
   }
 
   async function statusAction(kind) {

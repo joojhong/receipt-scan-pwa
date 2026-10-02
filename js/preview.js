@@ -12,6 +12,17 @@
   var ctx = null;
   var imgs = {};    // id → objectURL(미리보기용으로 작게 만든 사진)
   var DIM_KEY = 'rs.dim.';
+  var MODE_KEY = 'rs.gapji.';   // 구분별로 마지막에 고른 [갑지+영수증 · 갑지만 · 영수증만]
+  var MODES = [['both', '갑지+영수증'], ['sheet', '갑지만'], ['receipts', '영수증만']];
+  var sheetPrev = { key: '', urls: [] }; // 미리보기용 작은 갑지 그림
+
+  function getMode(cat) {
+    if (!window.RSGapji || RSGapji.KINDS.indexOf(cat) < 0) return 'receipts'; // 출장비는 영수증만
+    try { var m = localStorage.getItem(MODE_KEY + cat); if (m === 'both' || m === 'sheet' || m === 'receipts') return m; } catch (e) { /* 무시 */ }
+    return 'both';
+  }
+  function setMode(cat, m) { try { localStorage.setItem(MODE_KEY + cat, m); } catch (e) { /* 무시 */ } }
+  function claimMonth(items) { return mostCommon(items.map(function (it) { return it.month; })) || ''; }
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function won(n) { return Number(n || 0).toLocaleString('ko-KR'); }
@@ -27,7 +38,7 @@
     return best;
   }
   function safeName(s) { return String(s || '').replace(/[\\/:*?"<>|\s]+/g, '').slice(0, 20); }
-  function fileName(category, items, userName) {
+  function fileName(category, items, userName, mode) {
     var who = safeName(userName) || '이름없음', date;
     if (category === '출장비') {
       var trips = items.map(function (it) { return it.tripDate; }).filter(Boolean).sort();
@@ -36,7 +47,7 @@
     }
     var ym = mostCommon(items.map(function (it) { return it.month; }));
     date = ym ? ym.slice(2, 4) + ym.slice(5, 7) + String(lastDay(ym)).padStart(2, '0') : '000000';
-    return date + '_' + category + '_영수증_' + who + '.pdf';
+    return date + '_' + category + '_' + (mode === 'sheet' ? '갑지' : '영수증') + '_' + who + '.pdf';
   }
 
   // ── 그리기 ──
@@ -55,8 +66,14 @@
     var items = P.items, sum = 0;
     items.forEach(function (it) { sum += it.amount || 0; });
     var remake = sel.remake || null;
-    var name = remake && remake.name ? remake.name : fileName(sel.category, items, ctx.userName);
+    var mode = getMode(sel.category), withSheet = mode !== 'receipts';
+    var info = ctx.info() || {};
+    var name = remake && remake.name ? remake.name : fileName(sel.category, items, ctx.userName, mode);
     var warns = [];
+    // 사용구분(개인청구·법인카드)이 섞이면 갑지를 따로 만들어야 함
+    var uses = {}; items.forEach(function (it) { var u = RSGapji.useType(it); (uses[u] = uses[u] || []).push(it.id); });
+    var mixed = withSheet && Object.keys(uses).length > 1;
+    var noInfo = withSheet && !(info['사번'] && info['사원명'] && info['팀명']);
     if (sel.category === '출장비') {
       var trips = {}; items.forEach(function (it) { trips[it.tripDate || '없음'] = 1; });
       if (Object.keys(trips).length > 1) warns.push('출장일이 다른 영수증이 섞여 있습니다. 파일명에는 가장 이른 출장일을 씁니다.');
@@ -70,18 +87,33 @@
     var h = '<header class="dt-top"><button class="icon-btn" id="pvBack" aria-label="뒤로">' + ICON.back + '</button><h1>' + (remake ? '다시 만들기' : 'A4 미리보기') + '</h1></header>' +
       (remake ? '<div class="banner">이 PDF 파일의 내용을 새로 바꿉니다. 파일명과 Drive 위치는 그대로이고, 바뀌기 전 내용은 Drive 버전 기록에 남습니다.</div>' : '') +
       '<div class="pv-sum"><b>' + esc(sel.category) + '</b> · ' + items.length + '건 · ' + won(sum) + '원' +
-        (P.pages ? ' · <b>' + P.pages.length + '쪽</b>' : '') + '</div>' +
+        '<!--np-->' + '</div>' +
       '<div class="pv-name"><span>파일명' + (remake ? ' (그대로)' : '') + '</span><b>' + esc(name) + '</b>' +
         (P.size ? '<span>PDF 크기 약 ' + (P.size / 1048576).toFixed(1) + 'MB' + (P.reduced ? ' · 10MB를 넘지 않게 화질을 조금 낮춤' : '') + '</span>' : '') + '</div>' +
       (P.tooBig ? '<div class="banner warn">화질을 낮춰도 10MB를 넘습니다. 인트라넷에 올라가지 않을 수 있으니 영수증을 두 번에 나눠 만들어 주세요.</div>' : '') +
       warns.map(function (w) { return '<div class="banner warn">' + esc(w) + '</div>'; }).join('') +
+      (RSGapji.KINDS.indexOf(sel.category) >= 0 ? '<div class="pv-mode" role="group" aria-label="PDF 구성">' + MODES.map(function (m) {
+        return '<button type="button" data-mode="' + m[0] + '"' + (mode === m[0] ? ' class="on"' : '') + '>' + m[1] + '</button>';
+      }).join('') + '</div>' : '') +
+      (mixed ? '<div class="banner warn">개인청구 ' + uses['개인청구'].length + '건과 법인카드 ' + uses['법인카드'].length + '건이 섞여 있습니다. 갑지는 사용구분별로 따로 만듭니다. 한쪽만 골라 주세요.' +
+        '<div class="pv-split"><button class="mini" type="button" data-use="개인청구">개인청구 ' + uses['개인청구'].length + '건만</button>' +
+        '<button class="mini" type="button" data-use="법인카드">법인카드 ' + uses['법인카드'].length + '건만</button></div></div>' : '') +
+      (noInfo ? '<div class="banner">갑지 머리글(사번·팀명·사원명 등)이 비어 있습니다. <button class="mini" id="pvMe" type="button">내 정보 채우기</button></div>' : '') +
       (P.error ? '<div class="banner warn" role="alert">' + esc(P.error) + ' <button class="mini" id="pvRetry" type="button">다시 시도</button></div>' : '');
 
-    if (!P.pages) {
+    var sheets = withSheet && !mixed ? sheetUrls(sel.category, items, info) : [];
+    var nPages = sheets.length + (mode === 'sheet' ? 0 : (P.pages ? P.pages.length : 0));
+    h = h.replace('<!--np-->', nPages ? ' · <b>' + nPages + '쪽</b>' : '');
+    h += sheets.map(function (u, i) {
+      return '<div class="pv-pl">' + (i + 1) + ' / ' + nPages + '쪽 · 갑지</div><div class="pv-page pv-sheet"><img src="' + u + '" alt="갑지 ' + (i + 1) + '쪽"></div>';
+    }).join('');
+    if (mode === 'sheet') {
+      h += '<p class="hint">갑지만 PDF로 만듭니다. 영수증 사진은 넣지 않습니다.</p>';
+    } else if (!P.pages) {
       h += '<div class="empty"><b>배치를 계산하는 중…</b>' + esc(P.status || '') + '</div>';
     } else {
       h += P.pages.map(function (pg) {
-        return '<div class="pv-pl">' + (pg.page + 1) + ' / ' + P.pages.length + '쪽' + (pg.scale < 0.999 ? ' · ' + Math.round(pg.scale * 100) + '%로 줄임' : '') + '</div>' +
+        return '<div class="pv-pl">' + (sheets.length + pg.page + 1) + ' / ' + nPages + '쪽' + (pg.scale < 0.999 ? ' · ' + Math.round(pg.scale * 100) + '%로 줄임' : '') + '</div>' +
           '<div class="pv-page">' + pg.boxes.map(function (b) {
             var st = 'left:' + (b.x / 210 * 100) + '%;top:' + (b.y / 297 * 100) + '%;width:' + (b.w / 210 * 100) + '%;height:' + (b.h / 297 * 100) + '%';
             return '<div class="pv-box" style="' + st + '" data-pv="' + esc(b.id) + '">' + (imgs[b.id] ? '<img src="' + imgs[b.id] + '" alt="">' : '') + '</div>';
@@ -90,7 +122,7 @@
       h += '<p class="hint">흰 종이 = A4 한 장(여백 10mm). 영수증은 실제 크기로 놓고, 넘치는 쪽만 조금 줄입니다(85%까지).</p>';
     }
     h += '<div class="dt-bar"><button class="btn-alt pv-alt" id="pvBack2" type="button">고르기로</button>' +
-      '<button class="cta" id="pvSave" type="button"' + (P.pages && !P.busy && navigator.onLine ? '' : ' disabled') + '>' +
+      '<button class="cta" id="pvSave" type="button"' + (P.pages && !P.busy && !mixed && navigator.onLine ? '' : ' disabled') + '>' +
         (P.busy ? esc(P.busy) : P.savedPdf ? '청구완료 처리 다시 시도' : remake ? 'PDF 바꾸고 청구완료' : 'PDF로 저장하고 청구완료') + '</button></div><div class="bx-space"></div>';
     if (!navigator.onLine) h = h.replace('<div class="dt-bar">', '<div class="banner">온라인에서만 PDF를 저장할 수 있습니다.</div><div class="dt-bar">');
 
@@ -98,13 +130,19 @@
     var back = function () { ctx.back(); };
     root.querySelector('#pvBack').onclick = back;
     root.querySelector('#pvBack2').onclick = back;
-    root.querySelector('#pvSave').onclick = function () { save(sel, name); };
+    root.querySelector('#pvSave').onclick = function () { save(sel, name, mode, info); };
+    root.querySelectorAll('[data-mode]').forEach(function (b) {
+      b.onclick = function () { if (P.busy || P.savedPdf) return; setMode(sel.category, b.dataset.mode); redraw(); };
+    });
+    root.querySelectorAll('[data-use]').forEach(function (b) { b.onclick = function () { ctx.narrow(uses[b.dataset.use]); }; });
+    var me = root.querySelector('#pvMe');
+    if (me) me.onclick = function () { ctx.gotoMe(); };
     var rt = root.querySelector('#pvRetry');
     if (rt) rt.onclick = function () { P = null; ctx.rerender(); };
   }
 
   // ── 저장 ──
-  async function save(sel, name) {
+  async function save(sel, name, mode, info) {
     var p = P;
     if (p.busy) return;
     p.error = '';
@@ -113,7 +151,15 @@
     try {
       if (!p.savedPdf) {
         p.busy = 'PDF를 만드는 중…'; redraw();
-        var built = await RSPdf.build(p.pages, byId, function (it) { return ctx.photoBlob(it).then(decode); },
+        // 갑지 쪽 = A4 전체를 차지하는 그림 한 장
+        var all = [], cv = mode === 'receipts' ? [] : RSGapji.draw(sel.category, p.items, info, claimMonth(p.items), 200);
+        cv.forEach(function (c, i) {
+          var gid = '__gapji' + i;
+          byId[gid] = { id: gid, rot: 0, canvas: c };
+          all.push({ page: all.length, scale: 1, boxes: [{ id: gid, x: 0, y: 0, w: 210, h: 297, scale: 1, sheet: true }] });
+        });
+        if (mode !== 'sheet') p.pages.forEach(function (pg) { all.push(pg); });
+        var built = await RSPdf.build(all, byId, function (it) { return it.canvas ? Promise.resolve(it.canvas) : ctx.photoBlob(it).then(decode); },
           function (msg) { p.busy = msg; setBusy(msg); });
         p.size = built.blob.size; p.reduced = built.reduced; p.tooBig = !!built.tooBig;
         if (p.tooBig && !confirm('PDF가 ' + (p.size / 1048576).toFixed(1) + 'MB로 인트라넷 한도(10MB)를 넘습니다. 그래도 저장할까요?')) { p.busy = ''; redraw(); return; }
@@ -144,6 +190,18 @@
       p.error = (p.savedPdf ? 'PDF는 Drive에 저장했지만 청구완료 처리를 하지 못했습니다. ' : 'PDF를 저장하지 못했습니다. ') + (e.message || e);
       redraw();
     }
+  }
+
+  // 미리보기용 갑지(작게). 값이 같으면 다시 그리지 않음
+  function sheetUrls(cat, items, info) {
+    var key = cat + '|' + JSON.stringify(info) + '|' + items.map(function (it) {
+      return [it.id, it.txAt, it.amount, it.account, it.work, it.fuel, it.topic, it.guest, it.attendees, it.from, it.to, it.transport, it.driveTime, it.km, it.car, it.cardType, it.month].join('~');
+    }).join('|');
+    if (sheetPrev.key !== key) {
+      sheetPrev.key = key;
+      sheetPrev.urls = RSGapji.draw(cat, items, info, claimMonth(items), 110).map(function (c) { return c.toDataURL('image/png'); });
+    }
+    return sheetPrev.urls;
   }
 
   function setBusy(msg) { var b = document.getElementById('pvSave'); if (b) b.textContent = msg; }

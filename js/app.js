@@ -6,9 +6,10 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '0.11.0';
+  var APP_VERSION = '0.12.0';
   var CATEGORIES = ['경비', '접대비', '회의비', '출장비'];
   var CACHE_KEY = 'rs.cache.receipts';
+  var SET_KEY = 'rs.cache.settings';
 
   // ── 상태 ──
   var state = {
@@ -20,6 +21,7 @@
     admin: { list: null, loading: false, error: '', waiting: 0 }, // 관리자 화면
     ws: null,              // 폴더·시트 ID
     receipts: loadCache(), // 시트에서 읽은 영수증 목록
+    settings: loadSettingsCache(), // 내 정보(시트 '설정' 탭)
     loading: false,
     step: '',              // 준비 중 안내 문구
     error: '',
@@ -28,6 +30,19 @@
 
   function loadCache() {
     try { return JSON.parse(localStorage.getItem(CACHE_KEY) || '[]'); } catch (e) { return []; }
+  }
+  function loadSettingsCache() {
+    try { return JSON.parse(localStorage.getItem(SET_KEY) || '{}') || {}; } catch (e) { return {}; }
+  }
+  function setSettings(o) {
+    state.settings = o || {};
+    try { localStorage.setItem(SET_KEY, JSON.stringify(state.settings)); } catch (e) { /* 무시 */ }
+  }
+  async function saveSettings(ch) {
+    if (!navigator.onLine) throw new Error('오프라인입니다. 온라인에서 다시 저장해 주세요');
+    if (!state.ws) throw new Error('아직 시트를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요');
+    await RSStore.writeSettings(state.ws, ch);
+    setSettings(Object.assign({}, state.settings, ch));
   }
   function saveCache(list) {
     try { localStorage.setItem(CACHE_KEY, JSON.stringify(list)); } catch (e) { /* 무시 */ }
@@ -174,7 +189,7 @@
     state.selection = null;
     state.user = null; state.ws = null; state.receipts = []; state.error = ''; state.pending = null;
     state.admin = { list: null, loading: false, error: '', waiting: 0 };
-    saveCache([]);
+    saveCache([]); setSettings({});
     location.hash = '#/home';
     render();
   }
@@ -257,6 +272,7 @@
       '<div class="sheet" role="dialog" aria-label="계정">' +
         '<div class="grab"></div>' +
         '<div class="sheet-email">' + (state.user.name ? '<b>' + esc(state.user.name) + '</b><br>' : '') + esc(state.user.email) + '</div>' +
+        '<a class="sheet-item" href="#/me" id="meLink">내 정보 (갑지 머리글·차량)</a>' +
         '<button class="sheet-item" id="nameBtn" type="button">이름 바꾸기</button>' +
         (ws ? '<a class="sheet-item" href="' + RSStore.sheetUrl(ws) + '" target="_blank" rel="noopener">영수증 장부(시트) 열기</a>' +
               '<a class="sheet-item" href="' + RSStore.folderUrl(ws) + '" target="_blank" rel="noopener">Drive 폴더 열기</a>' : '') +
@@ -272,6 +288,7 @@
       var v = prompt('관리자 화면에 보일 이름 (예: 홍길동 대리)', state.user.name || '');
       if (v !== null) saveName(v);
     };
+    wrap.querySelector('#meLink').onclick = function () { wrap.remove(); };
     wrap.querySelector('#reloadBtn').onclick = function () { wrap.remove(); refresh(); };
     var al = wrap.querySelector('#adminLink');
     if (al) al.onclick = function () { wrap.remove(); };
@@ -291,6 +308,7 @@
       state.ws = await RSStore.ensureWorkspace(state.user.email, function (msg) { state.step = msg; render(); });
       state.step = '';
       state.receipts = await RSStore.readReceipts(state.ws);
+      try { setSettings(await RSStore.readSettings(state.ws)); } catch (e) { console.warn('설정 탭', e, e.detail); }
       state.offline = false;
       saveCache(state.receipts);
       kickQueue();
@@ -483,6 +501,8 @@
       edit: editReceipt,
       statusAction: statusAction,
       retryUpload: kickQueue,
+      settings: function () { return state.settings || {}; },
+      saveSettings: saveSettings,
       photoBlob: async function (r) {
         var b = RSBox.localBlob(r.id);
         if (b) return b;
@@ -594,6 +614,9 @@
       setClaimStatus: function (list) { return RSStore.setClaimStatus(state.ws, list, localIsoNow()); },
       nowIso: localIsoNow,
       claimed: function () { refresh(); },
+      info: function () { return state.settings || {}; },
+      narrow: function (ids) { state.selection = Object.assign({}, state.selection, { ids: ids }); render(); },
+      gotoMe: function () { state.meBack = '#/preview'; location.hash = '#/me'; },
       finish: function () { state.selection = null; RSBox.endRemake(); location.hash = '#/box'; },
       photoBlob: async function (r) {
         var b = RSBox.localBlob(r.id);
@@ -604,7 +627,52 @@
     });
   }
 
+  // ── 화면: 내 정보(갑지 머리글·차량) ──
+  var ME_FIELDS = [['사번', '예: 2-027'], ['팀명', '예: 동부지역'], ['사원명', '예: 홍길동'], ['회사명', '예: 엔케이엠알오'], ['승인자', '경비 갑지에 들어감']];
+  function renderMe(root) {
+    if (!state.user || state.pending) return renderHome(root);
+    var s = state.settings || {};
+    if (!state.meDraft) {
+      state.meDraft = {};
+      RSStore.SETTING_KEYS.forEach(function (k) { state.meDraft[k] = s[k] || ''; });
+      if (!state.meDraft['사원명']) state.meDraft['사원명'] = state.user.name || '';
+    }
+    var d = state.meDraft;
+    var inp = function (k, ph) {
+      return '<div class="dt-f"><span class="dt-l">' + k + '</span><input type="text" maxlength="40" data-me="' + k + '" placeholder="' + esc(ph) + '" value="' + esc(d[k] || '') + '"></div>';
+    };
+    root.appendChild(el(
+      '<header class="dt-top"><button class="icon-btn" id="meBack" aria-label="뒤로">' + ICON.prev + '</button><h1>내 정보</h1></header>' +
+      '<p class="hint" style="margin-top:0">경비·접대비·회의비 갑지 머리글에 그대로 들어갑니다. 구글 시트 "설정" 탭에서 고쳐도 됩니다.</p>' +
+      '<section class="dt-sec"><div class="dt-sec-h">갑지 머리글</div><div class="dt-sec-b">' +
+        ME_FIELDS.map(function (f) { return inp(f[0], f[1]); }).join('') + '</div></section>' +
+      '<section class="dt-sec"><div class="dt-sec-h">업무용 차량</div><div class="dt-sec-b">' +
+        inp('차량번호', '예: 183허5450') +
+        '<div class="dt-f"><span class="dt-l">회사 차량인가요?</span><div class="dt-seg dt-seg2">' +
+          [['예', '회사 차량'], ['아니오', '개인 차량']].map(function (o) {
+            return '<button type="button" data-car="' + o[0] + '"' + (d['회사 차량'] === o[0] ? ' class="on"' : '') + '>' + o[1] + '</button>';
+          }).join('') + '</div>' +
+          '<span class="dt-hint">회사 차량이면 주유비·차량유지관리비·주차/통행료 영수증의 업무용승용차 칸에 "차량번호(사원명)"이 자동으로 들어갑니다.</span></div>' +
+      '</div></section>' +
+      '<div class="dt-bar"><button class="cta" id="meSave" type="button"' + (state.meSaving ? ' disabled' : '') + '>' + (state.meSaving ? '저장 중…' : '저장') + '</button></div><div class="bx-space"></div>'
+    ));
+    root.querySelectorAll('[data-me]').forEach(function (i) { i.oninput = function () { d[i.dataset.me] = i.value.trim(); }; });
+    root.querySelectorAll('[data-car]').forEach(function (b) {
+      b.onclick = function () { d['회사 차량'] = d['회사 차량'] === b.dataset.car ? '' : b.dataset.car; render(); };
+    });
+    var leave = function () { state.meDraft = null; var b = state.meBack || '#/home'; state.meBack = ''; location.hash = b; };
+    root.querySelector('#meBack').onclick = leave;
+    root.querySelector('#meSave').onclick = function () {
+      if (d['차량번호'] && !d['회사 차량']) { toast('회사 차량인지 개인 차량인지 골라 주세요'); return; }
+      state.meSaving = true; render();
+      var ch = {}; RSStore.SETTING_KEYS.forEach(function (k) { ch[k] = d[k] || ''; });
+      saveSettings(ch).then(function () { state.meSaving = false; toast('내 정보를 저장했습니다'); leave(); })
+        .catch(function (e) { state.meSaving = false; toast(e.message || '저장하지 못했습니다'); render(); });
+    };
+  }
+
   var ROUTES = {
+    me: renderMe,
     preview: renderPreview,
     detail: renderDetail,
     capture: renderCapture,
@@ -625,7 +693,7 @@
     root.innerHTML = '';
     ROUTES[tab](root);
     var nav = document.querySelector('.tabbar');
-    nav.hidden = !state.user || !!state.pending || tab === 'admin' || tab === 'capture' || tab === 'detail' || tab === 'preview';
+    nav.hidden = !state.user || !!state.pending || tab === 'admin' || tab === 'capture' || tab === 'detail' || tab === 'preview' || tab === 'me';
     document.querySelectorAll('.tabbar a').forEach(function (a) {
       if (a.dataset.tab === tab) a.setAttribute('aria-current', 'page');
       else a.removeAttribute('aria-current');

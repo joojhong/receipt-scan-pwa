@@ -403,6 +403,41 @@
     if (dates.length) await api(SHEETS + '/' + ws.sheetId + '/values:batchUpdate', { method: 'POST', json: { valueInputOption: 'USER_ENTERED', data: dates } });
   }
 
+  // ── 내 정보(시트 '설정' 탭): 갑지 머리글에 씀. A열 항목, B열 값. PC에서 B열을 고쳐도 됨 ──
+  var SETTING_KEYS = ['사번', '팀명', '사원명', '회사명', '승인자', '차량번호', '회사 차량'];
+  async function ensureSettingsTab(ws) {
+    var info = await api(SHEETS + '/' + ws.sheetId + '?fields=sheets.properties.title');
+    if (info.sheets.some(function (s) { return s.properties.title === '설정'; })) return;
+    await api(SHEETS + '/' + ws.sheetId + ':batchUpdate', { method: 'POST', json: { requests: [{ addSheet: { properties: { title: '설정' } } }] } });
+    await api(SHEETS + '/' + ws.sheetId + '/values:batchUpdate', { method: 'POST', json: { valueInputOption: 'RAW', data: [
+      { range: '설정!A1:C1', values: [['항목', '값', '설명']] },
+      { range: '설정!A2:A' + (SETTING_KEYS.length + 1), values: SETTING_KEYS.map(function (k) { return [k]; }) },
+      { range: '설정!C2:C' + (SETTING_KEYS.length + 1), values: [['갑지에 그대로 들어갑니다 (예: 2-027)'], ['예: 동부지역'], ['예: 홍길동'], ['예: 엔케이엠알오'], ['경비 갑지 승인자'],
+        ['예: 183허5450'], ['예 = 회사 차량 / 아니오 = 개인 차량']] }
+    ] } });
+  }
+  async function readSettings(ws) {
+    var d;
+    try { d = await api(SHEETS + '/' + ws.sheetId + '/values/' + encodeURIComponent('설정!A2:B30')); }
+    catch (e) { if (e.status !== 400) throw e; await ensureSettingsTab(ws); return {}; }
+    var o = {};
+    (d.values || []).forEach(function (r) { if (r[0]) o[String(r[0]).trim()] = String(r[1] == null ? '' : r[1]).trim(); });
+    return o;
+  }
+  // 항목 이름으로 줄을 찾아 B열만 고침(없는 항목은 아래에 붙임)
+  async function writeSettings(ws, obj) {
+    await ensureSettingsTab(ws);
+    var d = await api(SHEETS + '/' + ws.sheetId + '/values/' + encodeURIComponent('설정!A2:A30'));
+    var rows = (d.values || []).map(function (r) { return String(r[0] || '').trim(); });
+    var data = [];
+    Object.keys(obj).forEach(function (k) {
+      var i = rows.indexOf(k);
+      if (i < 0) { rows.push(k); i = rows.length - 1; data.push({ range: '설정!A' + (i + 2), values: [[k]] }); }
+      data.push({ range: '설정!B' + (i + 2), values: [[obj[k] == null ? '' : String(obj[k])]] });
+    });
+    if (data.length) await api(SHEETS + '/' + ws.sheetId + '/values:batchUpdate', { method: 'POST', json: { valueInputOption: 'RAW', data: data } });
+  }
+
   window.RSStore = {
     monthFolder: monthFolder,
     findUpload: findUpload,
@@ -420,6 +455,9 @@
     setClaimStatus: setClaimStatus,
     imageSize: imageSize,
     findRow: findRow,
+    readSettings: readSettings,
+    writeSettings: writeSettings,
+    SETTING_KEYS: SETTING_KEYS,
     writeCells: writeCells,
     parseRow: function (r) { return rowToObj(r, 0); },
     FIELDS: F,
