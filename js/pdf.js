@@ -96,5 +96,78 @@
     return new Blob(parts, { type: 'application/pdf' });
   }
 
-  window.RSPdf = { build: build, LIMIT: LIMIT };
+  // ── 외부 도구(필요할 때만 CDN에서 불러옴, 무결성 해시로 확인) ──
+  var LIBS = {
+    pdflib: { url: 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js', sri: 'sha384-weMABwrltA6jWR8DDe9Jp5blk+tZQh7ugpCsF3JwSA53WZM9/14PjS5LAJNHNjAI', name: 'PDFLib' },
+    pdfjs: { url: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js', sri: 'sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e', name: 'pdfjsLib' }
+  };
+  var PDFJS_WORKER = { url: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js', sri: 'sha384-SnzOobpRMLXZ52iJvZm/C0fYw0OQemTXzTjIsdsfMcrCtCEe9qgzxTd3RSklO5x2' };
+  var loading = {};
+  function lib(key) {
+    var L = LIBS[key];
+    if (window[L.name]) return Promise.resolve(window[L.name]);
+    if (!loading[key]) loading[key] = new Promise(function (res, rej) {
+      var s = document.createElement('script');
+      s.src = L.url; s.integrity = L.sri; s.crossOrigin = 'anonymous';
+      s.onload = function () { res(window[L.name]); };
+      s.onerror = function () { s.remove(); loading[key] = null; rej(new Error('PDF 도구를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요')); };
+      document.head.appendChild(s);
+    });
+    return loading[key];
+  }
+  async function pdfjs() {
+    var p = await lib('pdfjs');
+    if (!p.GlobalWorkerOptions.workerSrc) {
+      // 다른 주소의 작업 파일은 바로 쓸 수 없어 내려받아(무결성 확인) 이 페이지 주소로 바꿔 씀
+      var r = await fetch(PDFJS_WORKER.url, { integrity: PDFJS_WORKER.sri });
+      p.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([await r.text()], { type: 'text/javascript' }));
+    }
+    return p;
+  }
+
+  // 암호가 걸린 PDF인지(pdf-lib는 암호 PDF를 열지 못함)
+  async function isEncrypted(buf) {
+    var L = await lib('pdflib');
+    try { await L.PDFDocument.load(buf); return false; }
+    catch (e) {
+      if (e && (e.name === 'EncryptedPDFError' || /encrypt/i.test(e.message || ''))) return true;
+      var bad = new Error('PDF를 열 수 없습니다. 손상된 파일일 수 있습니다'); bad.bad = true; throw bad;
+    }
+  }
+
+  // 암호를 풀어 암호 없는 PDF로 다시 만듦(쪽마다 그림으로 바꿔 담음). 비밀번호는 저장하지 않음
+  // 실패: e.pw = 'need'(비밀번호 필요) | 'wrong'(틀림)
+  async function unlock(buf, password, onStep) {
+    var P = await pdfjs();
+    var doc;
+    try { doc = await P.getDocument({ data: new Uint8Array(buf.slice(0)), password: password || '', isEvalSupported: false }).promise; }
+    catch (e) {
+      if (e && e.name === 'PasswordException') { var x = new Error(e.code === 2 ? '비밀번호가 맞지 않습니다' : '비밀번호가 필요합니다'); x.pw = e.code === 2 ? 'wrong' : 'need'; throw x; }
+      throw new Error('PDF를 열 수 없습니다');
+    }
+    var L = await lib('pdflib');
+    var tries = [{ dpi: 200, q: 0.85 }, { dpi: 150, q: 0.72 }, { dpi: 120, q: 0.6 }], blob = null;
+    for (var t = 0; t < tries.length; t++) {
+      var out = await L.PDFDocument.create();
+      for (var i = 1; i <= doc.numPages; i++) {
+        onStep && onStep('암호 푸는 중 ' + i + ' / ' + doc.numPages + (t ? ' (용량 줄이는 중)' : ''));
+        var page = await doc.getPage(i), base = page.getViewport({ scale: 1 });
+        var s = Math.min(tries[t].dpi / 72, 3000 / Math.max(base.width, base.height));
+        var vp = page.getViewport({ scale: s }), c = document.createElement('canvas');
+        c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+        var g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+        await page.render({ canvasContext: g, viewport: vp }).promise;
+        var jb = await new Promise(function (res) { c.toBlob(res, 'image/jpeg', tries[t].q); });
+        var img = await out.embedJpg(new Uint8Array(await jb.arrayBuffer()));
+        out.addPage([base.width, base.height]).drawImage(img, { x: 0, y: 0, width: base.width, height: base.height });
+        c.width = c.height = 0;
+      }
+      blob = new Blob([await out.save()], { type: 'application/pdf' });
+      if (blob.size <= LIMIT) break;
+    }
+    doc.destroy();
+    return blob;
+  }
+
+  window.RSPdf = { build: build, LIMIT: LIMIT, lib: lib, isEncrypted: isEncrypted, unlock: unlock };
 })();

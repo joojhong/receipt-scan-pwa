@@ -272,18 +272,7 @@
   }
 
   // PDF 합치기: [출장비 인트라넷 갑지] → 앱 갑지·영수증 쪽 → 첨부 영수증 PDF. pdf-lib(MIT)을 필요할 때만 불러옴
-  var PDFLIB_URL = 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js';
-  var PDFLIB_SRI = 'sha384-weMABwrltA6jWR8DDe9Jp5blk+tZQh7ugpCsF3JwSA53WZM9/14PjS5LAJNHNjAI';
-  function loadPdfLib() {
-    if (window.PDFLib) return Promise.resolve();
-    return new Promise(function (res, rej) {
-      var s = document.createElement('script');
-      s.src = PDFLIB_URL; s.integrity = PDFLIB_SRI; s.crossOrigin = 'anonymous';
-      s.onload = function () { res(); };
-      s.onerror = function () { s.remove(); rej(new Error('PDF 합치기 도구를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요')); };
-      document.head.appendChild(s);
-    });
-  }
+  function loadPdfLib() { return RSPdf.lib('pdflib'); }
   async function mergePdf(frontBuf, appBlob, attBufs) {
     await loadPdfLib();
     var L = window.PDFLib, out = await L.PDFDocument.create();
